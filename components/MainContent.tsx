@@ -15,6 +15,8 @@ interface MainContentProps {
   onSelectChapter: (chapter: Chapter) => void;
   onGenerateOutline: () => void;
   isLoadingOutline: boolean;
+  numChaptersToGenerate: number;
+  onNumChaptersChange: (num: number) => void;
   onGenerateNewTitle: () => void;
   isGeneratingTitle: boolean;
   onGenerateCoverIdeas: () => void;
@@ -65,6 +67,8 @@ const MainContent: React.FC<MainContentProps> = ({
   onSelectChapter,
   onGenerateOutline,
   isLoadingOutline,
+  numChaptersToGenerate,
+  onNumChaptersChange,
   onGenerateNewTitle,
   isGeneratingTitle,
   onGenerateCoverIdeas,
@@ -167,6 +171,25 @@ const MainContent: React.FC<MainContentProps> = ({
 
       <div className="my-4 p-4 rounded-lg bg-gray-800/50">
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">AI Generators & Tools</h3>
+        
+        <div className="flex items-center gap-2 mb-3 bg-gray-900/40 p-3 rounded-lg border border-gray-700/50">
+            <label htmlFor="num-chapters" className="text-sm font-medium text-gray-300">
+                Number of Chapters:
+            </label>
+            <input
+                type="number"
+                id="num-chapters"
+                value={numChaptersToGenerate}
+                onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    onNumChaptersChange(isNaN(val) ? 1 : Math.max(1, Math.min(50, val)));
+                }}
+                min="1"
+                max="50"
+                className="w-20 bg-gray-700 border border-gray-600 text-white rounded-lg p-2 text-center focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+            />
+        </div>
+
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
             <GeneratorButton onClick={onGenerateOutline} disabled={isLoadingOutline} loadingText="Outlining...">Generate Outline</GeneratorButton>
             <GeneratorButton onClick={onGenerateTrilogy} disabled={isGeneratingTrilogy} loadingText="Sequencing...">Trilogy Sequence</GeneratorButton>

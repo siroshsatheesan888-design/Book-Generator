@@ -46,11 +46,11 @@ export const generateBookIdeas = async (genre: string, topics: string[]): Promis
   }
 };
 
-export const generateOutline = async (title: string, synopsis: string): Promise<Chapter[]> => {
+export const generateOutline = async (title: string, synopsis: string, numberOfChapters: number): Promise<Chapter[]> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-pro",
-      contents: `Given the book title "${title}" and synopsis "${synopsis}", generate a list of 12 chapter titles that outline a coherent story arc. For each chapter, provide a one-sentence description of its content.`,
+      contents: `Given the book title "${title}" and synopsis "${synopsis}", generate a list of ${numberOfChapters} chapter titles that outline a coherent story arc. For each chapter, provide a one-sentence description of its content.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -163,6 +163,43 @@ export const generateCoverImage = async (title: string, synopsis: string, genre:
         throw new Error("Failed to generate cover image.");
     }
 };
+
+export const generateChapterImage = async (
+    title: string, 
+    synopsis: string, 
+    chapterTitle: string,
+    chapterContent: string,
+    genre: string
+): Promise<string> => {
+    try {
+        // Summarize the chapter content if it's too long to ensure a focused prompt
+        const contentSummary = chapterContent.length > 1000 
+            ? (await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: `Summarize the key scene or visual elements from the following text in one sentence for an image generation prompt: ${chapterContent}`
+              })).text
+            : chapterContent;
+
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: `A professional book illustration for a ${genre} novel titled "${title}". The scene is from the chapter "${chapterTitle}". The overall story is about: "${synopsis}". The main focus of the image should be: "${contentSummary}". The style should be evocative and match the genre. Do not include any text, titles, or author names.`,
+            config: {
+              numberOfImages: 1,
+              aspectRatio: '4:3',
+            },
+        });
+
+        if (!response.generatedImages || response.generatedImages.length === 0) {
+            throw new Error("Image generation failed to produce an image.");
+        }
+
+        return response.generatedImages[0].image.imageBytes;
+    } catch (error) {
+        console.error("Error generating chapter image:", error);
+        throw new Error("Failed to generate chapter image.");
+    }
+};
+
 
 export const generateAmazonDetails = async (title: string, synopsis: string): Promise<AmazonKDPDetails> => {
     try {

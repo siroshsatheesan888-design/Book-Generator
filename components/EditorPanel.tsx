@@ -18,6 +18,8 @@ interface EditorPanelProps {
   isFixingGrammar: boolean;
   onCheckPlagiarism: () => void;
   isCheckingPlagiarism: boolean;
+  onGenerateChapterImage: () => void;
+  isGeneratingChapterImage: boolean;
   showUndo: boolean;
   onUndo: () => void;
   onSave: () => void;
@@ -42,6 +44,8 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   isFixingGrammar,
   onCheckPlagiarism,
   isCheckingPlagiarism,
+  onGenerateChapterImage,
+  isGeneratingChapterImage,
   showUndo,
   onUndo,
   onSave,
@@ -91,7 +95,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     );
   }
 
-  const isAnyAIOperationRunning = isAnalyzing || isGeneratingContent || isHumanizing || isCheckingPlagiarism || isFixingGrammar;
+  const isAnyAIOperationRunning = isAnalyzing || isGeneratingContent || isHumanizing || isCheckingPlagiarism || isFixingGrammar || isGeneratingChapterImage;
 
   return (
     <div className="flex flex-col h-full">
@@ -146,12 +150,12 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       </div>
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <div className="w-full md:w-1/2 flex flex-col p-4 relative">
-          {(isGeneratingContent || isHumanizing || isFixingGrammar) && (
+          {(isGeneratingContent || isHumanizing || isFixingGrammar || isGeneratingChapterImage) && (
             <div className="absolute inset-4 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
               <div className="flex items-center gap-3 text-gray-300">
                 <SparklesIcon className="w-6 h-6 animate-pulse text-indigo-400" />
                 <span className="text-lg">
-                    {isHumanizing ? 'Humanizing your text...' : isFixingGrammar ? 'Applying grammar fixes...' : 'AI is writing your chapter...'}
+                    {isHumanizing ? 'Humanizing your text...' : isFixingGrammar ? 'Applying grammar fixes...' : isGeneratingChapterImage ? 'Generating an image...' : 'AI is writing your chapter...'}
                 </span>
               </div>
             </div>
@@ -194,6 +198,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
               <button onClick={onSuggestEdits} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Suggest Edits</button>
               <button onClick={onApplyGrammarFixes} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Fix Grammar & Spelling</button>
               <button onClick={onHumanize} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Humanize Text</button>
+              <button onClick={onGenerateChapterImage} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Generate Chapter Image</button>
               <button onClick={onCheckPlagiarism} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Check Plagiarism</button>
             </div>
           </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import type { BookIdea, Chapter, ChapterConnection, AmazonKDPDetails, TrilogyBook } from './types';
 import * as geminiService from './services/geminiService';
@@ -17,10 +16,16 @@ const simpleMarkdownToHtml = (markdown: string): string => {
   let html = markdown
       .replace(/</g, '&lt;').replace(/>/g, '&gt;') // Escape HTML
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-      .replace(/\*(.*?)\*/g, '<em>$1</em>'); // Italic
+      .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
+      .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" style="max-width: 80%; margin: 1em auto; display: block; border: 1px solid #ccc;" />'); // Image
   
   // Wrap paragraphs
-  return html.split(/\n\s*\n/).map(p => p.trim()).filter(p => p).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+  return html.split(/\n\s*\n/).map(p => p.trim()).filter(p => p).map(p => {
+    if (p.startsWith('<img')) {
+      return p;
+    }
+    return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+  }).join('');
 };
 
 const generateBookHtml = (
@@ -187,6 +192,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [genre, setGenre] = useState('Fantasy');
   const [favoriteTopics, setFavoriteTopics] = useState<string[]>([]);
+  const [numChaptersToGenerate, setNumChaptersToGenerate] = useState(12);
 
   // Loading states
   const [isLoadingIdeas, setIsLoadingIdeas] = useState(false);
@@ -199,6 +205,7 @@ const App: React.FC = () => {
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   const [isGeneratingCoverIdeas, setIsGeneratingCoverIdeas] = useState(false);
   const [isGeneratingCoverImage, setIsGeneratingCoverImage] = useState(false);
+  const [isGeneratingChapterImage, setIsGeneratingChapterImage] = useState(false);
   const [isGeneratingAmazonDetails, setIsGeneratingAmazonDetails] = useState(false);
   const [isGeneratingTrilogy, setIsGeneratingTrilogy] = useState(false);
   
@@ -268,14 +275,14 @@ const App: React.FC = () => {
     setSelectedChapter(null);
     setAnalysisResult('');
     try {
-      const generatedChapters = await geminiService.generateOutline(selectedIdea.title, selectedIdea.synopsis);
+      const generatedChapters = await geminiService.generateOutline(selectedIdea.title, selectedIdea.synopsis, numChaptersToGenerate);
       setChapters(generatedChapters);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setIsLoadingOutline(false);
     }
-  }, [selectedIdea]);
+  }, [selectedIdea, numChaptersToGenerate]);
 
   const handleSelectChapter = useCallback((chapter: Chapter) => {
     if (isEditingChapters) return; // Don't select if in edit mode
@@ -524,6 +531,50 @@ const App: React.FC = () => {
     }
   }, [selectedIdea, genre]);
 
+  const handleGenerateChapterImage = useCallback(async () => {
+    if (!selectedIdea || !selectedChapter || !currentChapterContent) return;
+    setIsGeneratingChapterImage(true);
+    setError(null);
+    try {
+        const base64Image = await geminiService.generateChapterImage(
+            selectedIdea.title,
+            selectedIdea.synopsis,
+            selectedChapter.chapterTitle,
+            currentChapterContent,
+            genre
+        );
+        
+        const handleInsert = () => {
+            const newContent = currentChapterContent + `\n\n![An illustration for the chapter "${selectedChapter.chapterTitle}"](data:image/png;base64,${base64Image})`;
+            handleContentChange(newContent);
+            setIsModalOpen(false);
+        };
+
+        setModalTitle("Generated Chapter Image");
+        setModalContent(
+            <div>
+                <img 
+                    src={`data:image/png;base64,${base64Image}`} 
+                    alt={`AI-generated image for ${selectedChapter.chapterTitle}`}
+                    className="w-full h-auto rounded-lg"
+                />
+                <p className="text-sm text-gray-400 mt-4">
+                    A visual interpretation of your chapter's content. You can insert this into your text.
+                </p>
+                <button onClick={handleInsert} className="mt-4 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
+                    Insert Image at End of Chapter
+                </button>
+            </div>
+        );
+        setIsModalOpen(true);
+
+    } catch (e) {
+        setError((e as Error).message);
+    } finally {
+        setIsGeneratingChapterImage(false);
+    }
+}, [selectedIdea, selectedChapter, currentChapterContent, genre, handleContentChange]);
+
   const handleGenerateAmazonDetails = useCallback(async () => {
     if (!selectedIdea) return;
     setIsGeneratingAmazonDetails(true);
@@ -692,6 +743,8 @@ const App: React.FC = () => {
               onSelectChapter={handleSelectChapter}
               onGenerateOutline={handleGenerateOutline}
               isLoadingOutline={isLoadingOutline}
+              numChaptersToGenerate={numChaptersToGenerate}
+              onNumChaptersChange={setNumChaptersToGenerate}
               onGenerateNewTitle={handleGenerateNewTitle}
               isGeneratingTitle={isGeneratingTitle}
               onGenerateCoverIdeas={handleGenerateCoverIdeas}
@@ -726,9 +779,10 @@ const App: React.FC = () => {
               isHumanizing={isHumanizing}
               onApplyGrammarFixes={handleApplyGrammarFixes}
               isFixingGrammar={isFixingGrammar}
-              // FIX: Corrected typo from `handleCheckPlagiarism` to `handlePlagiarismCheck`.
               onCheckPlagiarism={handlePlagiarismCheck}
               isCheckingPlagiarism={isCheckingPlagiarism}
+              onGenerateChapterImage={handleGenerateChapterImage}
+              isGeneratingChapterImage={isGeneratingChapterImage}
               showUndo={showUndo && lastContent?.chapterId === selectedChapter?.id}
               onUndo={handleUndo}
               onSave={handleSaveContent}

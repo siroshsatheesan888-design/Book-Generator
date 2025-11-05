@@ -208,6 +208,7 @@ const App: React.FC = () => {
   const [isGeneratingChapterImage, setIsGeneratingChapterImage] = useState(false);
   const [isGeneratingAmazonDetails, setIsGeneratingAmazonDetails] = useState(false);
   const [isGeneratingTrilogy, setIsGeneratingTrilogy] = useState(false);
+  const [isAnalyzingManuscript, setIsAnalyzingManuscript] = useState(false);
   
   // Modal State
   const [modalContent, setModalContent] = useState<React.ReactNode>(null);
@@ -635,6 +636,47 @@ const App: React.FC = () => {
     }
   }, [selectedIdea]);
 
+  const handleAnalyzeFullManuscript = useCallback(async () => {
+    if (!selectedIdea) return;
+    
+    const chaptersWithContent = chapters
+      .map(chapter => ({
+        chapterTitle: chapter.chapterTitle,
+        chapterContent: chapterContents.get(chapter.id) || '',
+      }))
+      .filter(c => c.chapterContent.trim() !== '');
+
+    if (chaptersWithContent.length === 0) {
+        setError("There is no written content to analyze. Please write some content in your chapters first.");
+        return;
+    }
+    
+    setIsAnalyzingManuscript(true);
+    setError(null);
+
+    try {
+        const analysis = await geminiService.analyzeFullManuscript(
+            selectedIdea.title,
+            selectedIdea.synopsis,
+            chaptersWithContent
+        );
+
+        setModalTitle("Full Manuscript Analysis");
+        const analysisResultHtml = analysis.replace(/\n/g, '<br />');
+        setModalContent(
+            <div 
+                className="prose prose-invert max-w-none text-gray-300" 
+                dangerouslySetInnerHTML={{ __html: analysisResultHtml }}
+            />
+        );
+        setIsModalOpen(true);
+    } catch (e) {
+        setError((e as Error).message);
+    } finally {
+        setIsAnalyzingManuscript(false);
+    }
+  }, [selectedIdea, chapters, chapterContents]);
+
   const handleSaveContent = useCallback(() => {
     if (selectedChapter) {
         const contentToSave = chapterContents.get(selectedChapter.id) || '';
@@ -755,6 +797,8 @@ const App: React.FC = () => {
               isGeneratingAmazonDetails={isGeneratingAmazonDetails}
               onGenerateTrilogy={handleGenerateTrilogy}
               isGeneratingTrilogy={isGeneratingTrilogy}
+              onAnalyzeFullManuscript={handleAnalyzeFullManuscript}
+              isAnalyzingManuscript={isAnalyzingManuscript}
               isEditingChapters={isEditingChapters}
               onToggleChapterEditing={() => setIsEditingChapters(prev => !prev)}
               onRenameChapter={handleRenameChapter}

@@ -409,3 +409,41 @@ export const checkPlagiarism = async (text: string): Promise<string> => {
     throw new Error("Failed to check for plagiarism.");
   }
 };
+
+export const analyzeFullManuscript = async (
+  title: string,
+  synopsis: string,
+  chapters: Array<{ chapterTitle: string; chapterContent: string }>
+): Promise<string> => {
+  if (chapters.length === 0) {
+    return "There is no content to analyze.";
+  }
+
+  const manuscriptContent = chapters.map(c => 
+    `--- CHAPTER: ${c.chapterTitle} ---\n${c.chapterContent}`
+  ).join('\n\n');
+
+  const prompt = `You are an expert developmental editor. Your task is to analyze a full book manuscript for high-level issues.
+  
+  The book is titled "${title}" with the following synopsis: "${synopsis}".
+
+  Please review the following chapters and identify any plot holes, character inconsistencies, pacing problems, continuity errors, or unresolved plot threads. 
+  
+  Provide a detailed report in markdown format. Start with a "Global Issues" section for problems that span multiple chapters. Then, group the rest of your findings by chapter. For each finding, explain the issue clearly and suggest a potential solution.
+  
+  MANUSCRIPT:
+  ---
+  ${manuscriptContent}
+  ---`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: prompt,
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error analyzing full manuscript:", error);
+    throw new Error("Failed to analyze the full manuscript.");
+  }
+};

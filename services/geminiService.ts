@@ -142,11 +142,39 @@ export const generateCoverIdeas = async (title: string, synopsis: string): Promi
     }
 };
 
-export const generateCoverImage = async (title: string, synopsis: string, genre: string): Promise<string> => {
+export const generateTaglines = async (title: string, synopsis: string): Promise<string[]> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Generate 4 catchy and genre-appropriate taglines for a book titled "${title}" with the synopsis "${synopsis}". The taglines should be short, intriguing, and suitable for a book cover.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        taglines: {
+                            type: Type.ARRAY,
+                            description: "A list of 4 book taglines.",
+                            items: { type: Type.STRING }
+                        }
+                    },
+                    required: ["taglines"]
+                }
+            }
+        });
+        const result = JSON.parse(response.text);
+        return result.taglines;
+    } catch (error) {
+        console.error("Error generating taglines:", error);
+        throw new Error("Failed to generate taglines.");
+    }
+};
+
+export const generateCoverImage = async (title: string, synopsis: string, genre: string, tagline: string): Promise<string> => {
     try {
         const response = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
-            prompt: `A professional, high-quality book cover for a ${genre} novel titled "${title}". The story is about: "${synopsis}". The image should be visually evocative, setting the mood and hinting at the story's core themes. Do not include any text, titles, or author names on the image. Focus on the core imagery.`,
+            prompt: `A professional, high-quality book cover for a ${genre} novel. The cover must feature the book's title "${title}" using a prominent, stylish, and legible font. It must also include the tagline: "${tagline}" in a smaller, complementary font. The overall imagery should be visually evocative, setting the mood for a story about: "${synopsis}". The typography and art style must be professional and genre-appropriate.`,
             config: {
               numberOfImages: 1,
               aspectRatio: '3:4',
@@ -445,5 +473,50 @@ export const analyzeFullManuscript = async (
   } catch (error) {
     console.error("Error analyzing full manuscript:", error);
     throw new Error("Failed to analyze the full manuscript.");
+  }
+};
+
+export const analyzeBookForFormatting = async (
+  title: string,
+  synopsis: string,
+  genre: string,
+  chapters: Array<{ chapterTitle: string; chapterContent: string }>
+): Promise<string> => {
+  if (chapters.length === 0) {
+    return "There is no content to analyze.";
+  }
+
+  const manuscriptContent = chapters.map(c => 
+    `--- CHAPTER: ${c.chapterTitle} ---\n${c.chapterContent}`
+  ).join('\n\n');
+  
+  const wordCount = manuscriptContent.trim().split(/\s+/).filter(Boolean).length;
+
+  const prompt = `You are a book production expert. Your task is to analyze a manuscript to see how it would fit into a standard 6" x 9" trade paperback format.
+  
+  The book is a ${genre} novel titled "${title}" with the following synopsis: "${synopsis}".
+  
+  The manuscript has a total word count of approximately ${wordCount} words.
+
+  Please provide a detailed analysis report in markdown format that includes:
+  1.  **Estimated Page Count:** Based on the word count, calculate the estimated number of pages for a 6" x 9" book, assuming a standard font size and margin (typically 250-300 words per page).
+  2.  **Genre Length Analysis:** Comment on how this length fits within typical expectations for the "${genre}" genre. Is it short, average, or long?
+  3.  **Pacing & Structure Suggestions:** Based on the manuscript content, provide actionable suggestions for adjusting the length. Identify specific chapters or sections that could be expanded with more detail or condensed for better pacing.
+  4.  **Final Verdict:** A concluding summary of whether the book is well-suited for the 6x9 format as-is, or if adjustments are recommended.
+  
+  MANUSCRIPT:
+  ---
+  ${manuscriptContent}
+  ---`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: prompt,
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error analyzing book for formatting:", error);
+    throw new Error("Failed to analyze the book for formatting.");
   }
 };

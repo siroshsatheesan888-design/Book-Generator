@@ -29,6 +29,8 @@ interface MainContentProps {
   isGeneratingTrilogy: boolean;
   onAnalyzeFullManuscript: () => void;
   isAnalyzingManuscript: boolean;
+  onAnalyzeForFormatting: () => void;
+  isAnalyzingFormatting: boolean;
   isEditingChapters: boolean;
   onToggleChapterEditing: () => void;
   onRenameChapter: (id: string, newTitle: string) => void;
@@ -83,6 +85,8 @@ const MainContent: React.FC<MainContentProps> = ({
   isGeneratingTrilogy,
   onAnalyzeFullManuscript,
   isAnalyzingManuscript,
+  onAnalyzeForFormatting,
+  isAnalyzingFormatting,
   isEditingChapters,
   onToggleChapterEditing,
   onRenameChapter,
@@ -198,10 +202,11 @@ const MainContent: React.FC<MainContentProps> = ({
             <GeneratorButton onClick={onGenerateOutline} disabled={isLoadingOutline} loadingText="Outlining...">Generate Outline</GeneratorButton>
             <GeneratorButton onClick={onGenerateTrilogy} disabled={isGeneratingTrilogy} loadingText="Sequencing...">Trilogy Sequence</GeneratorButton>
             <GeneratorButton onClick={onGenerateCoverIdeas} disabled={isGeneratingCoverIdeas} loadingText="Dreaming...">Cover Ideas</GeneratorButton>
-            <GeneratorButton onClick={onGenerateCoverImage} disabled={isGeneratingCoverImage} loadingText="Painting...">Cover Image</GeneratorButton>
+            <GeneratorButton onClick={onGenerateCoverImage} disabled={isGeneratingCoverImage} loadingText="Designing...">Generate Cover w/ Title</GeneratorButton>
             <GeneratorButton onClick={onGenerateAmazonDetails} disabled={isGeneratingAmazonDetails} loadingText="Publishing...">KDP Details</GeneratorButton>
             <GeneratorButton onClick={onAnalyzeFullManuscript} disabled={isAnalyzingManuscript || chapters.length === 0} loadingText="Analyzing...">Analyze Manuscript</GeneratorButton>
-            <button onClick={onExportToPdf} disabled={!chapters.length} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:bg-green-500/50 disabled:cursor-not-allowed transition-colors text-sm lg:col-span-3">
+            <GeneratorButton onClick={onAnalyzeForFormatting} disabled={isAnalyzingFormatting || chapters.length === 0} loadingText="Formatting...">Analyze for 6x9 Print</GeneratorButton>
+            <button onClick={onExportToPdf} disabled={!chapters.length} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:bg-green-500/50 disabled:cursor-not-allowed transition-colors text-sm col-span-2 lg:col-span-3">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                 Export as Book (PDF)
             </button>

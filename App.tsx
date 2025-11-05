@@ -209,6 +209,7 @@ const App: React.FC = () => {
   const [isGeneratingAmazonDetails, setIsGeneratingAmazonDetails] = useState(false);
   const [isGeneratingTrilogy, setIsGeneratingTrilogy] = useState(false);
   const [isAnalyzingManuscript, setIsAnalyzingManuscript] = useState(false);
+  const [isAnalyzingFormatting, setIsAnalyzingFormatting] = useState(false);
   
   // Modal State
   const [modalContent, setModalContent] = useState<React.ReactNode>(null);
@@ -508,26 +509,76 @@ const App: React.FC = () => {
     if (!selectedIdea) return;
     setIsGeneratingCoverImage(true);
     setError(null);
+    setIsModalOpen(true);
+    setModalTitle("Generating Taglines...");
+    setModalContent(
+      <div className="text-center p-4">
+        <SparklesIcon className="w-12 h-12 mx-auto animate-pulse text-indigo-400" />
+        <p className="mt-4 text-gray-300">Coming up with some catchy taglines...</p>
+      </div>
+    );
+
     try {
-        const base64Image = await geminiService.generateCoverImage(selectedIdea.title, selectedIdea.synopsis, genre);
-        setCoverImageBase64(base64Image);
-        setModalTitle("Generated Book Cover");
+      // Step 1: Generate Taglines
+      const taglines = await geminiService.generateTaglines(selectedIdea.title, selectedIdea.synopsis);
+
+      // Step 2: Define the handler for when a user selects a tagline
+      const handleTaglineSelect = async (tagline: string) => {
+        setModalTitle("Generating Your Cover...");
         setModalContent(
-            <div>
-                <img 
-                    src={`data:image/png;base64,${base64Image}`} 
-                    alt={`AI-generated cover for ${selectedIdea.title}`}
-                    className="w-full h-auto rounded-lg"
-                />
-                <p className="text-sm text-gray-400 mt-4">
-                    This is a visual concept for your book cover. It will be used as the cover page when you export your book.
-                </p>
-            </div>
+           <div className="text-center p-4">
+            <SparklesIcon className="w-12 h-12 mx-auto animate-pulse text-indigo-400" />
+            <p className="mt-4 text-gray-300">The AI is designing your cover with the title and tagline. This may take a moment...</p>
+          </div>
         );
-        setIsModalOpen(true);
+
+        try {
+          const base64Image = await geminiService.generateCoverImage(selectedIdea.title, selectedIdea.synopsis, genre, tagline);
+          setCoverImageBase64(base64Image);
+          setModalTitle("Generated Book Cover");
+          setModalContent(
+            <div>
+              <img 
+                src={`data:image/png;base64,${base64Image}`} 
+                alt={`AI-generated cover for ${selectedIdea.title}`}
+                className="w-full h-auto rounded-lg"
+              />
+              <p className="text-sm text-gray-400 mt-4">
+                This is a visual concept for your book cover, now with title and tagline. It will be used as the cover page when you export your book.
+              </p>
+            </div>
+          );
+        } catch (e) {
+          setModalContent(
+            <div className="text-center text-red-400 p-4">
+              <p>Sorry, an error occurred while generating the image:</p>
+              <p className="mt-2 text-sm text-gray-400">{(e as Error).message}</p>
+            </div>
+          );
+        }
+      };
+
+      // Step 3: Display tagline options
+      setModalTitle("Select a Tagline for Your Cover");
+      setModalContent(
+        <div className="space-y-4">
+          <p className="text-gray-400">Choose a tagline to feature on your book cover alongside the title. The AI will then generate the full cover image.</p>
+          <div className="flex flex-col gap-3">
+            {taglines.map((tag, index) => (
+              <button 
+                key={index}
+                onClick={() => handleTaglineSelect(tag)}
+                className="w-full text-left p-3 bg-gray-700/50 rounded-lg hover:bg-indigo-500/30 transition-colors"
+              >
+                <p className="text-white">{tag}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
     } catch (e) {
       setError((e as Error).message);
-    } finally {
+      setIsModalOpen(false);
       setIsGeneratingCoverImage(false);
     }
   }, [selectedIdea, genre]);
@@ -677,6 +728,48 @@ const App: React.FC = () => {
     }
   }, [selectedIdea, chapters, chapterContents]);
 
+  const handleAnalyzeBookForFormatting = useCallback(async () => {
+    if (!selectedIdea) return;
+    
+    const chaptersWithContent = chapters
+      .map(chapter => ({
+        chapterTitle: chapter.chapterTitle,
+        chapterContent: chapterContents.get(chapter.id) || '',
+      }))
+      .filter(c => c.chapterContent.trim() !== '');
+
+    if (chaptersWithContent.length === 0) {
+        setError("There is no written content to analyze. Please write some content in your chapters first.");
+        return;
+    }
+    
+    setIsAnalyzingFormatting(true);
+    setError(null);
+
+    try {
+        const analysis = await geminiService.analyzeBookForFormatting(
+            selectedIdea.title,
+            selectedIdea.synopsis,
+            genre,
+            chaptersWithContent
+        );
+
+        setModalTitle("6\" x 9\" Book Format Analysis");
+        const analysisResultHtml = analysis.replace(/\n/g, '<br />');
+        setModalContent(
+            <div 
+                className="prose prose-invert max-w-none text-gray-300" 
+                dangerouslySetInnerHTML={{ __html: analysisResultHtml }}
+            />
+        );
+        setIsModalOpen(true);
+    } catch (e) {
+        setError((e as Error).message);
+    } finally {
+        setIsAnalyzingFormatting(false);
+    }
+  }, [selectedIdea, chapters, chapterContents, genre]);
+
   const handleSaveContent = useCallback(() => {
     if (selectedChapter) {
         const contentToSave = chapterContents.get(selectedChapter.id) || '';
@@ -734,6 +827,12 @@ const App: React.FC = () => {
     setPdfPreviewHtml(html);
     setIsPdfPreviewOpen(true);
   }, [selectedIdea, chapters, chapterContents, coverImageBase64]);
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    // Reset any states that might be left hanging by an interrupted modal flow.
+    if (isGeneratingCoverImage) setIsGeneratingCoverImage(false);
+  };
 
 
   return (
@@ -799,6 +898,8 @@ const App: React.FC = () => {
               isGeneratingTrilogy={isGeneratingTrilogy}
               onAnalyzeFullManuscript={handleAnalyzeFullManuscript}
               isAnalyzingManuscript={isAnalyzingManuscript}
+              onAnalyzeForFormatting={handleAnalyzeBookForFormatting}
+              isAnalyzingFormatting={isAnalyzingFormatting}
               isEditingChapters={isEditingChapters}
               onToggleChapterEditing={() => setIsEditingChapters(prev => !prev)}
               onRenameChapter={handleRenameChapter}
@@ -835,7 +936,7 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalTitle}>
+      <Modal isOpen={isModalOpen} onClose={handleModalClose} title={modalTitle}>
         {modalContent}
       </Modal>
       <PdfPreviewModal

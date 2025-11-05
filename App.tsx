@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import type { BookIdea, Chapter, AmazonKDPDetails } from './types';
+import React, { useState, useCallback, useMemo } from 'react';
+import type { BookIdea, Chapter, AmazonKDPDetails, TrilogyBook } from './types';
 import * as geminiService from './services/geminiService';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
@@ -30,11 +30,24 @@ const App: React.FC = () => {
   const [isGeneratingCoverIdeas, setIsGeneratingCoverIdeas] = useState(false);
   const [isGeneratingCoverImage, setIsGeneratingCoverImage] = useState(false);
   const [isGeneratingAmazonDetails, setIsGeneratingAmazonDetails] = useState(false);
+  const [isGeneratingTrilogy, setIsGeneratingTrilogy] = useState(false);
   
   // Modal State
   const [modalContent, setModalContent] = useState<React.ReactNode>(null);
   const [modalTitle, setModalTitle] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const { totalWordCount, totalPages } = useMemo(() => {
+    let count = 0;
+    for (const content of chapterContents.values()) {
+        // filter(Boolean) handles empty strings from multiple spaces
+        count += content.trim().split(/\s+/).filter(Boolean).length;
+    }
+    return {
+        totalWordCount: count,
+        totalPages: Math.ceil(count / 250),
+    };
+  }, [chapterContents]);
 
   const handleGenerateIdeas = useCallback(async () => {
     setIsLoadingIdeas(true);
@@ -276,6 +289,31 @@ const App: React.FC = () => {
         setIsGeneratingAmazonDetails(false);
     }
   }, [selectedIdea]);
+  
+  const handleGenerateTrilogy = useCallback(async () => {
+    if (!selectedIdea) return;
+    setIsGeneratingTrilogy(true);
+    setError(null);
+    try {
+        const trilogyBooks: TrilogyBook[] = await geminiService.generateTrilogySequence(selectedIdea.title, selectedIdea.synopsis);
+        setModalTitle("Trilogy Sequence Outline");
+        setModalContent(
+            <div className="space-y-6">
+                {trilogyBooks.sort((a, b) => a.bookNumber - b.bookNumber).map((book) => (
+                    <div key={book.bookNumber} className="p-4 bg-gray-700/50 rounded-lg">
+                        <h3 className="text-xl font-bold text-indigo-300 mb-2">Book {book.bookNumber}: {book.title}</h3>
+                        <p className="text-gray-300 whitespace-pre-wrap">{book.synopsis}</p>
+                    </div>
+                ))}
+            </div>
+        );
+        setIsModalOpen(true);
+    } catch (e) {
+        setError((e as Error).message);
+    } finally {
+        setIsGeneratingTrilogy(false);
+    }
+  }, [selectedIdea]);
 
   return (
     <div className="flex flex-col h-screen font-sans bg-gray-900 text-gray-200">
@@ -283,6 +321,16 @@ const App: React.FC = () => {
         <div className="flex items-center gap-3">
           <SparklesIcon className="w-8 h-8 text-indigo-400" />
           <h1 className="text-2xl font-bold tracking-tight text-white">Mojo Book Writer AI</h1>
+        </div>
+        <div className="flex items-center gap-6 text-sm">
+            <div className="text-center">
+                <div className="text-lg font-bold text-white">{totalWordCount.toLocaleString()}</div>
+                <div className="text-xs text-gray-400 uppercase tracking-wider">Words</div>
+            </div>
+            <div className="text-center">
+                <div className="text-lg font-bold text-white">{totalPages.toLocaleString()}</div>
+                <div className="text-xs text-gray-400 uppercase tracking-wider">Pages (Est.)</div>
+            </div>
         </div>
       </header>
 
@@ -324,6 +372,8 @@ const App: React.FC = () => {
               isGeneratingCoverImage={isGeneratingCoverImage}
               onGenerateAmazonDetails={handleGenerateAmazonDetails}
               isGeneratingAmazonDetails={isGeneratingAmazonDetails}
+              onGenerateTrilogy={handleGenerateTrilogy}
+              isGeneratingTrilogy={isGeneratingTrilogy}
             />
           </div>
           <div className="col-span-12 md:col-span-5 lg:col-span-5 xl:col-span-5 flex flex-col overflow-y-auto">

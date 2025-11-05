@@ -19,6 +19,8 @@ interface MainContentProps {
   isGeneratingCoverImage: boolean;
   onGenerateAmazonDetails: () => void;
   isGeneratingAmazonDetails: boolean;
+  onGenerateTrilogy: () => void;
+  isGeneratingTrilogy: boolean;
 }
 
 const GeneratorButton: React.FC<{onClick: () => void, disabled: boolean, loadingText: string, children: React.ReactNode}> = ({ onClick, disabled, loadingText, children }) => (
@@ -59,7 +61,9 @@ const MainContent: React.FC<MainContentProps> = ({
   onGenerateCoverImage,
   isGeneratingCoverImage,
   onGenerateAmazonDetails,
-  isGeneratingAmazonDetails
+  isGeneratingAmazonDetails,
+  onGenerateTrilogy,
+  isGeneratingTrilogy,
 }) => {
   if (!idea) {
     return (
@@ -97,8 +101,9 @@ const MainContent: React.FC<MainContentProps> = ({
 
       <div className="my-4 p-4 rounded-lg bg-gray-800/50">
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">AI Generators</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
             <GeneratorButton onClick={onGenerateOutline} disabled={isLoadingOutline} loadingText="Outlining...">Generate Outline</GeneratorButton>
+            <GeneratorButton onClick={onGenerateTrilogy} disabled={isGeneratingTrilogy} loadingText="Sequencing...">Trilogy Sequence</GeneratorButton>
             <GeneratorButton onClick={onGenerateCoverIdeas} disabled={isGeneratingCoverIdeas} loadingText="Dreaming...">Cover Ideas</GeneratorButton>
             <GeneratorButton onClick={onGenerateCoverImage} disabled={isGeneratingCoverImage} loadingText="Painting...">Cover Image</GeneratorButton>
             <GeneratorButton onClick={onGenerateAmazonDetails} disabled={isGeneratingAmazonDetails} loadingText="Publishing...">KDP Details</GeneratorButton>

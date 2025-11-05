@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { BookIdea, Chapter, AmazonKDPDetails } from '../types';
+import type { BookIdea, Chapter, AmazonKDPDetails, TrilogyBook } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -198,6 +198,56 @@ export const generateAmazonDetails = async (title: string, synopsis: string): Pr
         throw new Error("Failed to generate Amazon KDP details.");
     }
 };
+
+export const generateTrilogySequence = async (title: string, synopsis: string): Promise<TrilogyBook[]> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: `Expand the following book idea into a complete trilogy. For each of the three books, provide a compelling title and a detailed synopsis (at least 3-4 paragraphs) that outlines a full story arc suitable for a novel of at least 200 pages. Ensure the three books form a cohesive series.
+
+      Original Idea Title: "${title}"
+      Original Idea Synopsis: "${synopsis}"`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            trilogy: {
+              type: Type.ARRAY,
+              description: "An array of three books for the trilogy.",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  bookNumber: {
+                    type: Type.INTEGER,
+                    description: "The book number in the trilogy (1, 2, or 3).",
+                  },
+                  title: {
+                    type: Type.STRING,
+                    description: "The title of this book in the trilogy.",
+                  },
+                  synopsis: {
+                    type: Type.STRING,
+                    description: "A detailed synopsis for this book.",
+                  },
+                },
+                required: ["bookNumber", "title", "synopsis"],
+              },
+            },
+          },
+          required: ["trilogy"],
+        },
+      },
+    });
+
+    const result = JSON.parse(response.text);
+    return result.trilogy;
+  } catch (error) {
+    console.error("Error generating trilogy sequence:", error);
+    throw new Error("Failed to generate trilogy sequence.");
+  }
+};
+
 
 export const analyzeContent = async (
   text: string,

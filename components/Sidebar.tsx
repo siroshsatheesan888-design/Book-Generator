@@ -15,7 +15,7 @@ interface SidebarProps {
   onTopicsChange: (topics: string[]) => void;
 }
 
-const GENRES = ["Fantasy", "Sci-Fi", "Mystery", "Thriller", "Romance", "Historical Fiction", "Fiction", "Non-Fiction", "Humour", "Crime", "Horror", "Comic Book", "Children's Book"];
+const GENRES = ["Fantasy", "Sci-Fi", "Mystery", "Thriller", "Psychological Fiction", "Romance", "Historical Fiction", "Novel", "Fiction", "Non-Fiction", "Humour", "Crime", "Horror", "Comic Book", "Children's Book"];
 
 const Sidebar: React.FC<SidebarProps> = ({
   ideas,

@@ -2,7 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { BookIdea, Chapter } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+// FIX: Removed `as string` casting as per coding guidelines.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateBookIdeas = async (genre: string): Promise<BookIdea[]> => {
   try {
@@ -80,17 +81,57 @@ export const generateChapters = async (title: string, synopsis: string): Promise
   }
 };
 
-export const analyzeContent = async (text: string): Promise<string> => {
+export const generateChapterContent = async (bookTitle: string, bookSynopsis: string, chapterTitle: string, chapterDescription: string): Promise<string> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: `You are a creative writer. Based on the book titled "${bookTitle}" with the synopsis "${bookSynopsis}", write the content for the chapter titled "${chapterTitle}".
+      The chapter should focus on: "${chapterDescription}".
+      Write a compelling and engaging chapter of about 500-700 words. Use rich descriptions and advance the plot.
+      Output the content in markdown format.`,
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error generating chapter content:", error);
+    throw new Error("Failed to generate chapter content.");
+  }
+};
+
+export const analyzeContent = async (
+  text: string,
+  aspects: string[],
+  context: { bookSynopsis: string; chapterDescription: string }
+): Promise<string> => {
   if (!text.trim()) return "There is no content to analyze.";
+  if (aspects.length === 0) return "Please select at least one aspect to analyze.";
+
+  // FIX: Property 'ListFormat' does not exist on type 'typeof Intl'. Replaced Intl.ListFormat with a manual implementation for broader compatibility.
+  const aspectsString =
+    aspects.length <= 2
+      ? aspects.join(' and ')
+      : `${aspects.slice(0, -1).join(', ')}, and ${aspects[aspects.length - 1]}`;
+
+  let prompt = `Analyze the following text for ${aspectsString}. Provide a brief, constructive summary of your analysis for each aspect in markdown format.`;
+
+  if (aspects.includes('Plot Consistency')) {
+    prompt += `
+    
+    When analyzing for Plot Consistency, use the following context:
+    - Book Synopsis: "${context.bookSynopsis}"
+    - Chapter Description: "${context.chapterDescription}"`;
+  }
+
+  prompt += `
+  
+  Text to analyze:
+  ---
+  ${text}
+  ---`;
+
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Analyze the following text for tone, pacing, and clarity. Provide a brief, constructive summary of your analysis in markdown format.
-      
-      Text to analyze:
-      ---
-      ${text}
-      ---`,
+      contents: prompt,
     });
     return response.text;
   } catch (error) {
@@ -98,6 +139,7 @@ export const analyzeContent = async (text: string): Promise<string> => {
     throw new Error("Failed to analyze content.");
   }
 };
+
 
 export const suggestEdits = async (text: string): Promise<string> => {
   if (!text.trim()) return "There is no content to edit.";

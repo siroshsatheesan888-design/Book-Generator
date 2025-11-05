@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import type { BookIdea, Chapter } from './types';
 import * as geminiService from './services/geminiService';
@@ -19,6 +18,7 @@ const App: React.FC = () => {
 
   const [isLoadingIdeas, setIsLoadingIdeas] = useState(false);
   const [isLoadingChapters, setIsLoadingChapters] = useState(false);
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [genre, setGenre] = useState('Fantasy');
@@ -74,21 +74,57 @@ const App: React.FC = () => {
       setChapterContents(prev => new Map(prev).set(selectedChapter.id, content));
     }
   };
+  
+  const handleGenerateContent = useCallback(async () => {
+    if (!selectedIdea || !selectedChapter) return;
+    setIsGeneratingContent(true);
+    setError(null);
+    try {
+      const content = await geminiService.generateChapterContent(
+        selectedIdea.title,
+        selectedIdea.synopsis,
+        selectedChapter.chapterTitle,
+        selectedChapter.chapterDescription
+      );
+      handleContentChange(content);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIsGeneratingContent(false);
+    }
+  }, [selectedIdea, selectedChapter]);
 
   const currentChapterContent = selectedChapter ? chapterContents.get(selectedChapter.id) || '' : '';
 
-  const handleAnalyze = async (type: 'analyze' | 'edit') => {
+  const handleAnalysisRequest = async (aspects: string[]) => {
+    if (!selectedChapter || !selectedIdea) return;
+    setIsAnalyzing(true);
+    setAnalysisResult('');
+    setError(null);
+    try {
+      const result = await geminiService.analyzeContent(
+        currentChapterContent,
+        aspects,
+        {
+          bookSynopsis: selectedIdea.synopsis,
+          chapterDescription: selectedChapter.chapterDescription
+        }
+      );
+      setAnalysisResult(result);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleEditSuggestionRequest = async () => {
     if (!selectedChapter) return;
     setIsAnalyzing(true);
     setAnalysisResult('');
     setError(null);
     try {
-      let result;
-      if (type === 'analyze') {
-        result = await geminiService.analyzeContent(currentChapterContent);
-      } else {
-        result = await geminiService.suggestEdits(currentChapterContent);
-      }
+      const result = await geminiService.suggestEdits(currentChapterContent);
       setAnalysisResult(result);
     } catch (e) {
       setError((e as Error).message);
@@ -142,9 +178,12 @@ const App: React.FC = () => {
               chapter={selectedChapter}
               content={currentChapterContent}
               onContentChange={handleContentChange}
-              onAnalyze={handleAnalyze}
+              onAnalyze={handleAnalysisRequest}
+              onSuggestEdits={handleEditSuggestionRequest}
               analysisResult={analysisResult}
               isAnalyzing={isAnalyzing}
+              onGenerateContent={handleGenerateContent}
+              isGeneratingContent={isGeneratingContent}
             />
           </div>
         </div>

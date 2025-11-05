@@ -24,8 +24,11 @@ const App: React.FC = () => {
   const [isLoadingOutline, setIsLoadingOutline] = useState(false);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isHumanizing, setIsHumanizing] = useState(false);
+  const [isCheckingPlagiarism, setIsCheckingPlagiarism] = useState(false);
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   const [isGeneratingCoverIdeas, setIsGeneratingCoverIdeas] = useState(false);
+  const [isGeneratingCoverImage, setIsGeneratingCoverImage] = useState(false);
   const [isGeneratingAmazonDetails, setIsGeneratingAmazonDetails] = useState(false);
   
   // Modal State
@@ -142,6 +145,35 @@ const App: React.FC = () => {
       setIsAnalyzing(false);
     }
   };
+  
+  const handleHumanizeText = useCallback(async () => {
+    if (!selectedChapter || !currentChapterContent) return;
+    setIsHumanizing(true);
+    setError(null);
+    try {
+      const humanizedText = await geminiService.humanizeText(currentChapterContent);
+      handleContentChange(humanizedText);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIsHumanizing(false);
+    }
+  }, [selectedChapter, currentChapterContent]);
+
+  const handlePlagiarismCheck = useCallback(async () => {
+    if (!selectedChapter || !currentChapterContent) return;
+    setIsCheckingPlagiarism(true);
+    setAnalysisResult('');
+    setError(null);
+    try {
+      const result = await geminiService.checkPlagiarism(currentChapterContent);
+      setAnalysisResult(result);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIsCheckingPlagiarism(false);
+    }
+  }, [selectedChapter, currentChapterContent]);
 
   const handleGenerateNewTitle = useCallback(async () => {
     if (!selectedIdea) return;
@@ -183,6 +215,32 @@ const App: React.FC = () => {
     }
   }, [selectedIdea]);
 
+  const handleGenerateCoverImage = useCallback(async () => {
+    if (!selectedIdea) return;
+    setIsGeneratingCoverImage(true);
+    setError(null);
+    try {
+        const base64Image = await geminiService.generateCoverImage(selectedIdea.title, selectedIdea.synopsis, genre);
+        setModalTitle("Generated Book Cover");
+        setModalContent(
+            <div>
+                <img 
+                    src={`data:image/png;base64,${base64Image}`} 
+                    alt={`AI-generated cover for ${selectedIdea.title}`}
+                    className="w-full h-auto rounded-lg"
+                />
+                <p className="text-sm text-gray-400 mt-4">
+                    This is a visual concept for your book cover. You can use this as inspiration when working with a designer.
+                </p>
+            </div>
+        );
+        setIsModalOpen(true);
+    } catch (e) {
+        setError((e as Error).message);
+    } finally {
+        setIsGeneratingCoverImage(false);
+    }
+  }, [selectedIdea, genre]);
 
   const handleGenerateAmazonDetails = useCallback(async () => {
     if (!selectedIdea) return;
@@ -262,6 +320,8 @@ const App: React.FC = () => {
               isGeneratingTitle={isGeneratingTitle}
               onGenerateCoverIdeas={handleGenerateCoverIdeas}
               isGeneratingCoverIdeas={isGeneratingCoverIdeas}
+              onGenerateCoverImage={handleGenerateCoverImage}
+              isGeneratingCoverImage={isGeneratingCoverImage}
               onGenerateAmazonDetails={handleGenerateAmazonDetails}
               isGeneratingAmazonDetails={isGeneratingAmazonDetails}
             />
@@ -277,6 +337,10 @@ const App: React.FC = () => {
               isAnalyzing={isAnalyzing}
               onGenerateContent={handleGenerateContent}
               isGeneratingContent={isGeneratingContent}
+              onHumanize={handleHumanizeText}
+              isHumanizing={isHumanizing}
+              onCheckPlagiarism={handlePlagiarismCheck}
+              isCheckingPlagiarism={isCheckingPlagiarism}
             />
           </div>
         </div>

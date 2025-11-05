@@ -12,6 +12,10 @@ interface EditorPanelProps {
   isAnalyzing: boolean;
   onGenerateContent: () => void;
   isGeneratingContent: boolean;
+  onHumanize: () => void;
+  isHumanizing: boolean;
+  onCheckPlagiarism: () => void;
+  isCheckingPlagiarism: boolean;
 }
 
 const ANALYSIS_ASPECTS = ['Tone', 'Pacing', 'Clarity', 'Plot Consistency'];
@@ -26,6 +30,10 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   isAnalyzing,
   onGenerateContent,
   isGeneratingContent,
+  onHumanize,
+  isHumanizing,
+  onCheckPlagiarism,
+  isCheckingPlagiarism,
 }) => {
   const [selectedAspects, setSelectedAspects] = React.useState<string[]>(['Tone']);
 
@@ -48,6 +56,8 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       </div>
     );
   }
+
+  const isAnyAIOperationRunning = isAnalyzing || isGeneratingContent || isHumanizing || isCheckingPlagiarism;
 
   return (
     <div className="flex flex-col h-full">
@@ -81,11 +91,11 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       </div>
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <div className="w-full md:w-1/2 flex flex-col p-4 relative">
-          {isGeneratingContent && (
+          {(isGeneratingContent || isHumanizing) && (
             <div className="absolute inset-4 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
               <div className="flex items-center gap-3 text-gray-300">
                 <SparklesIcon className="w-6 h-6 animate-pulse text-indigo-400" />
-                <span className="text-lg">AI is writing your chapter...</span>
+                <span className="text-lg">{isHumanizing ? 'Humanizing your text...' : 'AI is writing your chapter...'}</span>
               </div>
             </div>
           )}
@@ -94,7 +104,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
             onChange={(e) => onContentChange(e.target.value)}
             placeholder="Start writing your chapter here, or use the AI to generate it."
             className="flex-1 w-full p-4 bg-gray-900 border border-gray-700 rounded-lg resize-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-300 disabled:opacity-70"
-            disabled={isGeneratingContent}
+            disabled={isAnyAIOperationRunning}
           />
         </div>
         <div className="w-full md:w-1/2 flex flex-col p-4 border-t md:border-t-0 md:border-l border-gray-700">
@@ -116,17 +126,19 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
                     ))}
                 </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => onAnalyze(selectedAspects)} disabled={isAnalyzing || !content || isGeneratingContent || selectedAspects.length === 0} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Analyze</button>
-              <button onClick={onSuggestEdits} disabled={isAnalyzing || !content || isGeneratingContent} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Suggest Edits</button>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => onAnalyze(selectedAspects)} disabled={isAnyAIOperationRunning || !content || selectedAspects.length === 0} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Analyze</button>
+              <button onClick={onSuggestEdits} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Suggest Edits</button>
+              <button onClick={onHumanize} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Humanize Text</button>
+              <button onClick={onCheckPlagiarism} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Check Plagiarism</button>
             </div>
           </div>
           <div className="flex-1 p-4 bg-gray-900 border border-gray-700 rounded-lg overflow-y-auto prose prose-invert prose-sm max-w-none">
-            {isAnalyzing ? (
+            {isAnalyzing || isCheckingPlagiarism ? (
               <div className="flex items-center justify-center h-full">
                 <div className="flex items-center gap-2 text-gray-400">
                   <SparklesIcon className="w-5 h-5 animate-pulse" />
-                  <span>AI is thinking...</span>
+                  <span>{isCheckingPlagiarism ? 'Checking for plagiarism...' : 'AI is thinking...'}</span>
                 </div>
               </div>
             ) : analysisResult ? (

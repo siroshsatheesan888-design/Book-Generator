@@ -141,6 +141,28 @@ export const generateCoverIdeas = async (title: string, synopsis: string): Promi
     }
 };
 
+export const generateCoverImage = async (title: string, synopsis: string, genre: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: `A professional, high-quality book cover for a ${genre} novel titled "${title}". The story is about: "${synopsis}". The image should be visually evocative, setting the mood and hinting at the story's core themes. Do not include any text, titles, or author names on the image. Focus on the core imagery.`,
+            config: {
+              numberOfImages: 1,
+              aspectRatio: '3:4',
+            },
+        });
+
+        if (!response.generatedImages || response.generatedImages.length === 0) {
+            throw new Error("Image generation failed to produce an image.");
+        }
+
+        return response.generatedImages[0].image.imageBytes;
+    } catch (error) {
+        console.error("Error generating cover image:", error);
+        throw new Error("Failed to generate cover image.");
+    }
+};
+
 export const generateAmazonDetails = async (title: string, synopsis: string): Promise<AmazonKDPDetails> => {
     try {
         const response = await ai.models.generateContent({
@@ -237,5 +259,46 @@ export const suggestEdits = async (text: string): Promise<string> => {
   } catch (error) {
     console.error("Error suggesting edits:", error);
     throw new Error("Failed to suggest edits.");
+  }
+};
+
+export const humanizeText = async (text: string): Promise<string> => {
+  if (!text.trim()) return "There is no content to humanize.";
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: `Rewrite the following text to sound more natural, engaging, and human-like. Vary sentence structure, use more evocative language, and reduce robotic phrasing, while preserving the core meaning and plot points.
+      
+      Text to humanize:
+      ---
+      ${text}
+      ---`,
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error humanizing text:", error);
+    throw new Error("Failed to humanize text.");
+  }
+};
+
+export const checkPlagiarism = async (text: string): Promise<string> => {
+  if (!text.trim()) return "There is no content to check.";
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: `Act as a sophisticated plagiarism checker. Analyze the following text by searching the web for similar content. Provide a concise summary of your findings. If you find any potential matches, list them with the source URL, the source title, and an estimated similarity percentage. If no significant matches are found, state 'No potential plagiarism detected.' Format your entire response in markdown.
+      
+      Text to check:
+      ---
+      ${text}
+      ---`,
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error checking plagiarism:", error);
+    throw new Error("Failed to check for plagiarism.");
   }
 };

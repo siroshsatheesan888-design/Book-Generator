@@ -14,8 +14,14 @@ interface EditorPanelProps {
   isGeneratingContent: boolean;
   onHumanize: () => void;
   isHumanizing: boolean;
+  onApplyGrammarFixes: () => void;
+  isFixingGrammar: boolean;
   onCheckPlagiarism: () => void;
   isCheckingPlagiarism: boolean;
+  showUndo: boolean;
+  onUndo: () => void;
+  onSave: () => void;
+  onRevert: () => void;
 }
 
 const ANALYSIS_ASPECTS = ['Tone', 'Pacing', 'Clarity', 'Plot Consistency'];
@@ -32,10 +38,22 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   isGeneratingContent,
   onHumanize,
   isHumanizing,
+  onApplyGrammarFixes,
+  isFixingGrammar,
   onCheckPlagiarism,
   isCheckingPlagiarism,
+  showUndo,
+  onUndo,
+  onSave,
+  onRevert,
 }) => {
   const [selectedAspects, setSelectedAspects] = React.useState<string[]>(['Tone']);
+  const [saveStatus, setSaveStatus] = React.useState<'saved' | 'unsaved'>('saved');
+
+  React.useEffect(() => {
+    // When the chapter changes, reset the save status.
+    setSaveStatus('saved');
+  }, [chapter]);
 
   const handleAspectChange = (aspect: string) => {
     setSelectedAspects(prev =>
@@ -43,6 +61,22 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
         ? prev.filter(a => a !== aspect)
         : [...prev, aspect]
     );
+  };
+
+  const handleContentChangeWithStatus = (newContent: string) => {
+    onContentChange(newContent);
+    setSaveStatus('unsaved');
+  };
+
+  const handleSaveClick = () => {
+    onSave();
+    setSaveStatus('saved');
+  };
+
+  const handleRevertClick = () => {
+    onRevert();
+    // After reverting, the content matches the saved state.
+    setSaveStatus('saved');
   };
 
   if (!chapter) {
@@ -57,7 +91,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     );
   }
 
-  const isAnyAIOperationRunning = isAnalyzing || isGeneratingContent || isHumanizing || isCheckingPlagiarism;
+  const isAnyAIOperationRunning = isAnalyzing || isGeneratingContent || isHumanizing || isCheckingPlagiarism || isFixingGrammar;
 
   return (
     <div className="flex flex-col h-full">
@@ -67,41 +101,70 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
                 <h3 className="text-2xl font-bold text-white">{chapter.chapterTitle}</h3>
                 <p className="text-gray-400">{chapter.chapterDescription}</p>
             </div>
-            <button 
-                onClick={onGenerateContent} 
-                disabled={isGeneratingContent}
-                className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-            >
-                {isGeneratingContent ? (
-                    <>
-                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Generating...</span>
-                    </>
-                ) : (
-                    <>
-                    <SparklesIcon className="w-5 h-5" />
-                    <span>Generate Content</span>
-                    </>
-                )}
-            </button>
+            <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="text-right">
+                    <button 
+                        onClick={handleSaveClick}
+                        disabled={saveStatus !== 'unsaved' || isAnyAIOperationRunning}
+                        className="px-4 py-1 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-green-500/50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        Save
+                    </button>
+                    <p className={`text-xs mt-1 h-4 ${saveStatus === 'unsaved' ? 'text-yellow-400' : 'text-gray-500'}`}>
+                        {saveStatus === 'unsaved' ? 'Unsaved changes' : 'All changes saved'}
+                    </p>
+                </div>
+                 <button 
+                    onClick={handleRevertClick}
+                    disabled={saveStatus !== 'unsaved' || isAnyAIOperationRunning}
+                    className="px-4 py-1 text-sm font-semibold text-white bg-gray-600 rounded-md hover:bg-gray-700 disabled:bg-gray-500/50 disabled:cursor-not-allowed transition-colors"
+                >
+                    Revert
+                </button>
+                <button 
+                    onClick={onGenerateContent} 
+                    disabled={isGeneratingContent}
+                    className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed transition-colors"
+                >
+                    {isGeneratingContent ? (
+                        <>
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Generating...</span>
+                        </>
+                    ) : (
+                        <>
+                        <SparklesIcon className="w-5 h-5" />
+                        <span>Generate Content</span>
+                        </>
+                    )}
+                </button>
+            </div>
         </div>
       </div>
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         <div className="w-full md:w-1/2 flex flex-col p-4 relative">
-          {(isGeneratingContent || isHumanizing) && (
+          {(isGeneratingContent || isHumanizing || isFixingGrammar) && (
             <div className="absolute inset-4 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
               <div className="flex items-center gap-3 text-gray-300">
                 <SparklesIcon className="w-6 h-6 animate-pulse text-indigo-400" />
-                <span className="text-lg">{isHumanizing ? 'Humanizing your text...' : 'AI is writing your chapter...'}</span>
+                <span className="text-lg">
+                    {isHumanizing ? 'Humanizing your text...' : isFixingGrammar ? 'Applying grammar fixes...' : 'AI is writing your chapter...'}
+                </span>
               </div>
+            </div>
+          )}
+           {showUndo && (
+            <div className="absolute bottom-6 right-6 bg-gray-800 border border-gray-600 text-white py-2 px-4 rounded-lg shadow-lg flex items-center gap-4 z-20">
+                <p className="text-sm">Content has been updated.</p>
+                <button onClick={onUndo} className="font-semibold text-indigo-400 hover:text-indigo-300 text-sm">Undo</button>
             </div>
           )}
           <textarea
             value={content}
-            onChange={(e) => onContentChange(e.target.value)}
+            onChange={(e) => handleContentChangeWithStatus(e.target.value)}
             placeholder="Start writing your chapter here, or use the AI to generate it."
             className="flex-1 w-full p-4 bg-gray-900 border border-gray-700 rounded-lg resize-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-300 disabled:opacity-70"
             disabled={isAnyAIOperationRunning}
@@ -129,6 +192,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
             <div className="flex flex-wrap gap-2">
               <button onClick={() => onAnalyze(selectedAspects)} disabled={isAnyAIOperationRunning || !content || selectedAspects.length === 0} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Analyze</button>
               <button onClick={onSuggestEdits} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Suggest Edits</button>
+              <button onClick={onApplyGrammarFixes} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Fix Grammar & Spelling</button>
               <button onClick={onHumanize} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Humanize Text</button>
               <button onClick={onCheckPlagiarism} disabled={isAnyAIOperationRunning || !content} className="px-3 py-1 text-sm bg-gray-700 rounded-md hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Check Plagiarism</button>
             </div>

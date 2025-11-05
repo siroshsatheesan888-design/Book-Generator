@@ -1,5 +1,5 @@
 {
-  "name": "Mojo Book Writer AI",
+  "name": "Mojo Book Writer",
   "description": "An AI-powered application to help you brainstorm book ideas, generate chapter outlines, and analyze your writing. Using Gemini, it provides creative prompts and insightful feedback to streamline your book-writing process.",
   "requestFramePermissions": []
 }

@@ -5,10 +5,16 @@ export interface BookIdea {
   synopsis: string;
 }
 
+export interface ChapterConnection {
+  targetId: string;
+  description: string;
+}
+
 export interface Chapter {
   id: string;
   chapterTitle: string;
   chapterDescription: string;
+  connections: ChapterConnection[];
 }
 
 export interface AmazonKDPDetails {
@@ -23,7 +29,7 @@ export interface TrilogyBook {
   synopsis: string;
 }
 
-// FIX: Add missing type definitions for SubscriptionTier, UserProfile, and Plan to resolve TypeScript errors.
+// FIX: Added missing type definitions for SubscriptionTier, UserProfile, and Plan to resolve TypeScript errors.
 export type SubscriptionTier = 'free' | 'pro';
 
 export interface UserProfile {

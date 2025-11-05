@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { BookIdea, Chapter } from '../types';
 import { BookOpenIcon } from './icons/BookOpenIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { RefreshIcon } from './icons/RefreshIcon';
+import { PencilIcon } from './icons/PencilIcon';
+import { TrashIcon } from './icons/TrashIcon';
+import { DragHandleIcon } from './icons/DragHandleIcon';
+import { SitemapIcon } from './icons/SitemapIcon';
 
 interface MainContentProps {
   idea: BookIdea | null;
@@ -21,6 +25,13 @@ interface MainContentProps {
   isGeneratingAmazonDetails: boolean;
   onGenerateTrilogy: () => void;
   isGeneratingTrilogy: boolean;
+  isEditingChapters: boolean;
+  onToggleChapterEditing: () => void;
+  onRenameChapter: (id: string, newTitle: string) => void;
+  onReorderChapters: (chapters: Chapter[]) => void;
+  onDeleteChapter: (id: string) => void;
+  onExportToPdf: () => void;
+  onOpenConnectionManager: (chapter: Chapter) => void;
 }
 
 const GeneratorButton: React.FC<{onClick: () => void, disabled: boolean, loadingText: string, children: React.ReactNode}> = ({ onClick, disabled, loadingText, children }) => (
@@ -64,7 +75,20 @@ const MainContent: React.FC<MainContentProps> = ({
   isGeneratingAmazonDetails,
   onGenerateTrilogy,
   isGeneratingTrilogy,
+  isEditingChapters,
+  onToggleChapterEditing,
+  onRenameChapter,
+  onReorderChapters,
+  onDeleteChapter,
+  onExportToPdf,
+  onOpenConnectionManager,
 }) => {
+  const [renamingChapterId, setRenamingChapterId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const dragItem = React.useRef<Chapter | null>(null);
+  const dragOverItem = React.useRef<Chapter | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
   if (!idea) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center text-gray-500">
@@ -74,6 +98,48 @@ const MainContent: React.FC<MainContentProps> = ({
       </div>
     );
   }
+
+  const handleRenameClick = (chapter: Chapter) => {
+    setRenamingChapterId(chapter.id);
+    setRenameValue(chapter.chapterTitle);
+  };
+
+  const handleRenameSubmit = (chapterId: string) => {
+    if (renameValue.trim()) {
+      onRenameChapter(chapterId, renameValue.trim());
+    }
+    setRenamingChapterId(null);
+    setRenameValue('');
+  };
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, chapter: Chapter) => {
+    dragItem.current = chapter;
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>, chapter: Chapter) => {
+    e.preventDefault();
+    if (dragItem.current?.id !== chapter.id) {
+        dragOverItem.current = chapter;
+        setDragOverId(chapter.id);
+    }
+  };
+
+  const handleDragEnd = () => {
+    if (dragItem.current && dragOverItem.current && dragItem.current.id !== dragOverItem.current.id) {
+        const currentIndex = chapters.findIndex(ch => ch.id === dragItem.current!.id);
+        const targetIndex = chapters.findIndex(ch => ch.id === dragOverItem.current!.id);
+        
+        const newChapters = [...chapters];
+        const [removed] = newChapters.splice(currentIndex, 1);
+        newChapters.splice(targetIndex, 0, removed);
+        
+        onReorderChapters(newChapters);
+    }
+    dragItem.current = null;
+    dragOverItem.current = null;
+    setDragOverId(null);
+  };
 
   return (
     <div className="p-6 h-full flex flex-col">
@@ -100,31 +166,100 @@ const MainContent: React.FC<MainContentProps> = ({
       </div>
 
       <div className="my-4 p-4 rounded-lg bg-gray-800/50">
-        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">AI Generators</h3>
+        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">AI Generators & Tools</h3>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
             <GeneratorButton onClick={onGenerateOutline} disabled={isLoadingOutline} loadingText="Outlining...">Generate Outline</GeneratorButton>
             <GeneratorButton onClick={onGenerateTrilogy} disabled={isGeneratingTrilogy} loadingText="Sequencing...">Trilogy Sequence</GeneratorButton>
             <GeneratorButton onClick={onGenerateCoverIdeas} disabled={isGeneratingCoverIdeas} loadingText="Dreaming...">Cover Ideas</GeneratorButton>
             <GeneratorButton onClick={onGenerateCoverImage} disabled={isGeneratingCoverImage} loadingText="Painting...">Cover Image</GeneratorButton>
             <GeneratorButton onClick={onGenerateAmazonDetails} disabled={isGeneratingAmazonDetails} loadingText="Publishing...">KDP Details</GeneratorButton>
+            <button onClick={onExportToPdf} disabled={!chapters.length} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:bg-green-500/50 disabled:cursor-not-allowed transition-colors text-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                Export as Book (PDF)
+            </button>
         </div>
       </div>
       
-      <h3 className="text-xl font-semibold text-gray-300 mb-3">Chapters</h3>
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="text-xl font-semibold text-gray-300">Chapters</h3>
+        {chapters.length > 0 && (
+          <button 
+            onClick={onToggleChapterEditing} 
+            className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${isEditingChapters ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+            {isEditingChapters ? 'Done Editing' : 'Edit Chapters'}
+          </button>
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto space-y-2 pr-2 -mr-2">
         {chapters.length > 0 ? (
           chapters.map((chapter, index) => (
             <div
               key={chapter.id}
+              draggable={isEditingChapters}
+              onDragStart={isEditingChapters ? (e) => handleDragStart(e, chapter) : undefined}
+              onDragEnter={isEditingChapters ? (e) => handleDragEnter(e, chapter) : undefined}
+              onDragOver={isEditingChapters ? (e) => e.preventDefault() : undefined}
+              onDragEnd={isEditingChapters ? handleDragEnd : undefined}
               onClick={() => onSelectChapter(chapter)}
-              className={`p-3 rounded-lg cursor-pointer border border-transparent transition-all ${
-                selectedChapterId === chapter.id
+              className={`p-3 rounded-lg border border-transparent transition-all flex items-start justify-between gap-2 ${dragOverId === chapter.id ? 'drag-over' : ''} ${
+                isEditingChapters
+                  ? 'bg-gray-800 cursor-grab'
+                  : selectedChapterId === chapter.id
                   ? 'bg-indigo-900/50 border-indigo-700'
-                  : 'bg-gray-800 hover:bg-gray-700'
+                  : 'bg-gray-800 hover:bg-gray-700 cursor-pointer'
               }`}
             >
-              <h4 className="font-semibold text-white">Chapter {index + 1}: {chapter.chapterTitle}</h4>
-              <p className="text-sm text-gray-400 mt-1">{chapter.chapterDescription}</p>
+              {isEditingChapters ? (
+                <>
+                  <DragHandleIcon className="w-5 h-5 text-gray-500 flex-shrink-0 mt-1" />
+                  <div className="flex-grow">
+                  {renamingChapterId === chapter.id ? (
+                      <input 
+                        type="text"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => handleRenameSubmit(chapter.id)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit(chapter.id)}
+                        autoFocus
+                        className="w-full bg-gray-600 text-white rounded px-2 py-1 text-sm"
+                      />
+                  ) : (
+                    <span className="font-semibold text-white">Chapter {index + 1}: {chapter.chapterTitle}</span>
+                  )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button onClick={(e) => {e.stopPropagation(); handleRenameClick(chapter)}} className="p-1 text-gray-400 hover:text-white"><PencilIcon className="w-4 h-4" /></button>
+                    <button onClick={(e) => {e.stopPropagation(); onDeleteChapter(chapter.id)}} className="p-1 text-gray-400 hover:text-red-400"><TrashIcon className="w-4 h-4" /></button>
+                  </div>
+                </>
+              ) : (
+                <>
+                <div className="flex-grow">
+                  <h4 className="font-semibold text-white">Chapter {index + 1}: {chapter.chapterTitle}</h4>
+                  <p className="text-sm text-gray-400 mt-1">{chapter.chapterDescription}</p>
+                   {chapter.connections && chapter.connections.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-500">
+                      <span className="font-semibold text-gray-400">→ Connects to: </span>
+                      {chapter.connections.map((conn, i) => {
+                        const targetChapter = chapters.find(c => c.id === conn.targetId);
+                        return (
+                          <span key={i}>
+                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); targetChapter && onSelectChapter(targetChapter); }} className="text-indigo-400 hover:underline">
+                              {targetChapter?.chapterTitle || 'Unknown Chapter'}
+                            </button>
+                            {i < chapter.connections.length - 1 && ', '}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); onOpenConnectionManager(chapter); }} className="p-1 text-gray-400 hover:text-white flex-shrink-0" title="Manage Connections">
+                  <SitemapIcon className="w-5 h-5" />
+                </button>
+                </>
+              )}
             </div>
           ))
         ) : !isLoadingOutline && (

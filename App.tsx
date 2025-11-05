@@ -1,11 +1,180 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import type { BookIdea, Chapter, AmazonKDPDetails, TrilogyBook } from './types';
+
+import React, { useState, useCallback, useMemo, useRef } from 'react';
+import type { BookIdea, Chapter, ChapterConnection, AmazonKDPDetails, TrilogyBook } from './types';
 import * as geminiService from './services/geminiService';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
 import EditorPanel from './components/EditorPanel';
 import Modal from './components/Modal';
+import ConnectionManagerModal from './components/ConnectionManagerModal';
 import { SparklesIcon } from './components/icons/SparklesIcon';
+import PdfPreviewModal from './components/PdfPreviewModal';
+
+// FIX: Moved simpleMarkdownToHtml outside of the component as it is a pure function and does not depend on component state.
+const simpleMarkdownToHtml = (markdown: string): string => {
+  if (!markdown) return '';
+  // Basic conversion, can be expanded
+  let html = markdown
+      .replace(/</g, '&lt;').replace(/>/g, '&gt;') // Escape HTML
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+      .replace(/\*(.*?)\*/g, '<em>$1</em>'); // Italic
+  
+  // Wrap paragraphs
+  return html.split(/\n\s*\n/).map(p => p.trim()).filter(p => p).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+};
+
+const generateBookHtml = (
+    idea: BookIdea, 
+    chapters: Chapter[], 
+    chapterContents: Map<string, string>, 
+    coverImageBase64: string | null
+): string => {
+    return `
+        <html>
+            <head>
+                <title>Export: ${idea.title}</title>
+                <style>
+                    /* General Body and Print Styles */
+                    body { 
+                        font-family: 'Times New Roman', Times, serif; 
+                        line-height: 1.6; 
+                        color: #000; 
+                        margin: 0;
+                    }
+                    @media print {
+                        @page {
+                            size: A4;
+                            margin: 2.5cm;
+                            @bottom-center {
+                                content: counter(page);
+                                font-family: 'Times New Roman', Times, serif; 
+                                font-size: 10pt;
+                            }
+                        }
+                    }
+                    h1, h2, h3 { 
+                        font-family: 'Garamond', serif; 
+                        font-weight: bold;
+                        page-break-after: avoid;
+                    }
+                    p {
+                        margin: 0 0 1em 0;
+                        text-align: justify;
+                        text-indent: 1.5em; /* Indent paragraphs */
+                    }
+                    .chapter-content p:first-of-type {
+                        text-indent: 0; /* No indent on first paragraph of a chapter */
+                    }
+                    em {
+                        font-style: italic;
+                    }
+                    /* Page Break Utility */
+                    .page-break {
+                        page-break-before: always;
+                    }
+                    /* Cover Page */
+                    .cover-page {
+                        display: flex;
+                        flex-direction: column;
+                        justify-content: center;
+                        align-items: center;
+                        text-align: center;
+                        height: 100vh;
+                        page-break-after: always;
+                    }
+                    .cover-image {
+                        max-width: 80%;
+                        max-height: 60vh;
+                        object-fit: contain;
+                        margin-bottom: 2em;
+                        border: 1px solid #ccc;
+                    }
+                    .cover-title {
+                        font-size: 3em;
+                        font-weight: bold;
+                        margin: 0;
+                    }
+                    /* Table of Contents */
+                    .toc-page {
+                        page-break-after: always;
+                    }
+                    .toc-title {
+                        text-align: center;
+                        font-size: 2.5em;
+                        margin-bottom: 1.5em;
+                    }
+                    .toc-list {
+                        list-style: none;
+                        padding: 0;
+                        margin: 0 auto;
+                        max-width: 80%;
+                    }
+                    .toc-item {
+                        font-size: 1.2em;
+                        line-height: 1.5;
+                        padding-bottom: 0.5em;
+                        margin-bottom: 0.5em;
+                        border-bottom: 1px dotted #888;
+                    }
+                    .toc-item a {
+                        text-decoration: none;
+                        color: inherit;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: baseline;
+                        gap: 1em;
+                    }
+                    .toc-item a > span {
+                        flex-shrink: 1;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    }
+                    .toc-item a::after {
+                        content: target-counter(attr(href), page);
+                        font-weight: normal;
+                        flex-shrink: 0;
+                    }
+                    /* Chapter Styling */
+                    .chapter-title { 
+                        font-size: 2.5em; 
+                        text-align: center;
+                        margin-top: 1em; 
+                        margin-bottom: 2em;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="cover-page">
+                    ${coverImageBase64 ? `<img src="data:image/png;base64,${coverImageBase64}" alt="Book Cover" class="cover-image" />` : ''}
+                    <h1 class="cover-title">${idea.title}</h1>
+                </div>
+
+                <div class="toc-page">
+                    <h2 class="toc-title">Table of Contents</h2>
+                    <ul class="toc-list">
+                    ${chapters.map((chapter, index) => `
+                        <li class="toc-item">
+                            <a href="#chapter-${chapter.id}">
+                                <span>Chapter ${index + 1}: ${chapter.chapterTitle}</span>
+                            </a>
+                        </li>
+                    `).join('')}
+                    </ul>
+                </div>
+
+                ${chapters.map((chapter, index) => `
+                    <div class="page-break">
+                        <h2 id="chapter-${chapter.id}" class="chapter-title">Chapter ${index + 1}: ${chapter.chapterTitle}</h2>
+                        <div class="chapter-content">
+                            ${simpleMarkdownToHtml(chapterContents.get(chapter.id) || '<em>No content written for this chapter.</em>')}
+                        </div>
+                    </div>
+                `).join('')}
+            </body>
+        </html>
+    `;
+};
 
 const App: React.FC = () => {
   const [bookIdeas, setBookIdeas] = useState<BookIdea[]>([]);
@@ -25,6 +194,7 @@ const App: React.FC = () => {
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isHumanizing, setIsHumanizing] = useState(false);
+  const [isFixingGrammar, setIsFixingGrammar] = useState(false);
   const [isCheckingPlagiarism, setIsCheckingPlagiarism] = useState(false);
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   const [isGeneratingCoverIdeas, setIsGeneratingCoverIdeas] = useState(false);
@@ -36,6 +206,20 @@ const App: React.FC = () => {
   const [modalContent, setModalContent] = useState<React.ReactNode>(null);
   const [modalTitle, setModalTitle] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [connectionModalChapter, setConnectionModalChapter] = useState<Chapter | null>(null);
+  
+  // Undo state
+  const [lastContent, setLastContent] = useState<{ chapterId: string; content: string } | null>(null);
+  const [showUndo, setShowUndo] = useState(false);
+  const undoTimeoutRef = useRef<number | null>(null);
+
+  // Chapter Management State
+  const [isEditingChapters, setIsEditingChapters] = useState(false);
+
+  // Export state
+  const [coverImageBase64, setCoverImageBase64] = useState<string | null>(null);
+  const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
+  const [pdfPreviewHtml, setPdfPreviewHtml] = useState('');
 
   const { totalWordCount, totalPages } = useMemo(() => {
     let count = 0;
@@ -66,12 +250,15 @@ const App: React.FC = () => {
     }
   }, [genre, favoriteTopics]);
 
-  const handleSelectIdea = (idea: BookIdea) => {
+  // FIX: Wrapped handleSelectIdea in useCallback for performance optimization, as it's passed as a prop.
+  const handleSelectIdea = useCallback((idea: BookIdea) => {
     setSelectedIdea(idea);
     setChapters([]);
     setSelectedChapter(null);
     setAnalysisResult('');
-  };
+    setIsEditingChapters(false);
+    setCoverImageBase64(null); // Reset cover when idea changes
+  }, []);
 
   const handleGenerateOutline = useCallback(async () => {
     if (!selectedIdea) return;
@@ -90,19 +277,40 @@ const App: React.FC = () => {
     }
   }, [selectedIdea]);
 
-  const handleSelectChapter = (chapter: Chapter) => {
+  const handleSelectChapter = useCallback((chapter: Chapter) => {
+    if (isEditingChapters) return; // Don't select if in edit mode
+    if (undoTimeoutRef.current) {
+        clearTimeout(undoTimeoutRef.current);
+        setShowUndo(false);
+    }
+    // Check local storage for saved content before setting the chapter
+    if (!chapterContents.has(chapter.id)) {
+      const savedContent = localStorage.getItem(`mojo-book-writer-chapter-${chapter.id}`);
+      if (savedContent) {
+        // Pre-populate the content state for this chapter
+        setChapterContents(prev => new Map(prev).set(chapter.id, savedContent));
+      }
+    }
     setSelectedChapter(chapter);
     setAnalysisResult('');
-  };
+  }, [chapterContents, isEditingChapters]);
   
-  const handleContentChange = (content: string) => {
+  const handleContentChange = useCallback((content: string) => {
     if (selectedChapter) {
       setChapterContents(prev => new Map(prev).set(selectedChapter.id, content));
     }
-  };
+  }, [selectedChapter]);
   
   const handleGenerateContent = useCallback(async () => {
     if (!selectedIdea || !selectedChapter) return;
+    
+    const currentContent = chapterContents.get(selectedChapter.id) || '';
+    if (currentContent.trim().length > 0) {
+        if (!window.confirm('This will replace the existing content in the editor. Are you sure you want to proceed?')) {
+            return; // User cancelled
+        }
+    }
+
     setIsGeneratingContent(true);
     setError(null);
     try {
@@ -118,11 +326,12 @@ const App: React.FC = () => {
     } finally {
       setIsGeneratingContent(false);
     }
-  }, [selectedIdea, selectedChapter]);
+  }, [selectedIdea, selectedChapter, handleContentChange, chapterContents]);
 
   const currentChapterContent = selectedChapter ? chapterContents.get(selectedChapter.id) || '' : '';
 
-  const handleAnalysisRequest = async (aspects: string[]) => {
+  // FIX: Wrapped handleAnalysisRequest in useCallback for performance optimization and to fix scoping issues.
+  const handleAnalysisRequest = useCallback(async (aspects: string[]) => {
     if (!selectedChapter || !selectedIdea) return;
     setIsAnalyzing(true);
     setAnalysisResult('');
@@ -142,9 +351,10 @@ const App: React.FC = () => {
     } finally {
       setIsAnalyzing(false);
     }
-  };
+  }, [selectedChapter, selectedIdea, currentChapterContent]);
 
-  const handleEditSuggestionRequest = async () => {
+  // FIX: Wrapped handleEditSuggestionRequest in useCallback for performance optimization and to fix scoping issues.
+  const handleEditSuggestionRequest = useCallback(async () => {
     if (!selectedChapter) return;
     setIsAnalyzing(true);
     setAnalysisResult('');
@@ -157,21 +367,79 @@ const App: React.FC = () => {
     } finally {
       setIsAnalyzing(false);
     }
-  };
+  }, [selectedChapter, currentChapterContent]);
   
   const handleHumanizeText = useCallback(async () => {
     if (!selectedChapter || !currentChapterContent) return;
+    
+    if (currentChapterContent.trim().length > 0) {
+      if (!window.confirm('This will replace the existing content in the editor. Are you sure you want to proceed?')) {
+          return; // User cancelled
+      }
+    }
+    
     setIsHumanizing(true);
     setError(null);
     try {
-      const humanizedText = await geminiService.humanizeText(currentChapterContent);
+      const originalContent = currentChapterContent;
+      const humanizedText = await geminiService.humanizeText(originalContent);
       handleContentChange(humanizedText);
+      
+      setLastContent({ chapterId: selectedChapter.id, content: originalContent });
+      setShowUndo(true);
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = window.setTimeout(() => {
+        setShowUndo(false);
+      }, 5000);
+
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setIsHumanizing(false);
     }
-  }, [selectedChapter, currentChapterContent]);
+  }, [selectedChapter, currentChapterContent, handleContentChange]);
+
+  const handleApplyGrammarFixes = useCallback(async () => {
+    if (!selectedChapter || !currentChapterContent) return;
+    
+    if (currentChapterContent.trim().length > 0) {
+      if (!window.confirm('This will replace the existing content in the editor with a grammatically corrected version. Are you sure you want to proceed?')) {
+          return; // User cancelled
+      }
+    }
+    
+    setIsFixingGrammar(true);
+    setError(null);
+    try {
+      const originalContent = currentChapterContent;
+      const fixedText = await geminiService.applyGrammarFixes(originalContent);
+      handleContentChange(fixedText);
+
+      setLastContent({ chapterId: selectedChapter.id, content: originalContent });
+      setShowUndo(true);
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = window.setTimeout(() => {
+        setShowUndo(false);
+      }, 5000);
+
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setIsFixingGrammar(false);
+    }
+  }, [selectedChapter, currentChapterContent, handleContentChange]);
+
+  const handleUndo = useCallback(() => {
+    if (lastContent && selectedChapter && lastContent.chapterId === selectedChapter.id) {
+        handleContentChange(lastContent.content);
+    }
+    setShowUndo(false);
+    setLastContent(null);
+    if (undoTimeoutRef.current) {
+        clearTimeout(undoTimeoutRef.current);
+        undoTimeoutRef.current = null;
+    }
+  }, [lastContent, selectedChapter, handleContentChange]);
 
   const handlePlagiarismCheck = useCallback(async () => {
     if (!selectedChapter || !currentChapterContent) return;
@@ -234,6 +502,7 @@ const App: React.FC = () => {
     setError(null);
     try {
         const base64Image = await geminiService.generateCoverImage(selectedIdea.title, selectedIdea.synopsis, genre);
+        setCoverImageBase64(base64Image);
         setModalTitle("Generated Book Cover");
         setModalContent(
             <div>
@@ -243,15 +512,15 @@ const App: React.FC = () => {
                     className="w-full h-auto rounded-lg"
                 />
                 <p className="text-sm text-gray-400 mt-4">
-                    This is a visual concept for your book cover. You can use this as inspiration when working with a designer.
+                    This is a visual concept for your book cover. It will be used as the cover page when you export your book.
                 </p>
             </div>
         );
         setIsModalOpen(true);
     } catch (e) {
-        setError((e as Error).message);
+      setError((e as Error).message);
     } finally {
-        setIsGeneratingCoverImage(false);
+      setIsGeneratingCoverImage(false);
     }
   }, [selectedIdea, genre]);
 
@@ -315,6 +584,65 @@ const App: React.FC = () => {
     }
   }, [selectedIdea]);
 
+  const handleSaveContent = useCallback(() => {
+    if (selectedChapter) {
+        const contentToSave = chapterContents.get(selectedChapter.id) || '';
+        localStorage.setItem(`mojo-book-writer-chapter-${selectedChapter.id}`, contentToSave);
+    }
+  }, [selectedChapter, chapterContents]);
+
+  const handleRevertContent = useCallback(() => {
+      if (selectedChapter) {
+          if (window.confirm('Are you sure you want to revert all changes since the last save? This cannot be undone.')) {
+              const savedContent = localStorage.getItem(`mojo-book-writer-chapter-${selectedChapter.id}`) || '';
+              handleContentChange(savedContent);
+          }
+      }
+  }, [selectedChapter, handleContentChange]);
+
+  const handleRenameChapter = useCallback((chapterId: string, newTitle: string) => {
+    setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, chapterTitle: newTitle } : c));
+  }, []);
+
+  const handleReorderChapters = useCallback((reorderedChapters: Chapter[]) => {
+      setChapters(reorderedChapters);
+  }, []);
+
+  const handleDeleteChapter = useCallback((chapterId: string) => {
+    if (window.confirm('Are you sure you want to delete this chapter, its content, and all connections to it? This cannot be undone.')) {
+        if (selectedChapter?.id === chapterId) {
+            setSelectedChapter(null);
+        }
+        // Remove the chapter itself and any connections pointing to it from other chapters
+        setChapters(prev => 
+            prev.filter(c => c.id !== chapterId)
+                .map(c => ({
+                    ...c,
+                    connections: c.connections.filter(conn => conn.targetId !== chapterId)
+                }))
+        );
+        setChapterContents(prev => {
+            const newContents = new Map(prev);
+            newContents.delete(chapterId);
+            return newContents;
+        });
+        localStorage.removeItem(`mojo-book-writer-chapter-${chapterId}`);
+    }
+  }, [selectedChapter]);
+
+  const handleUpdateConnections = useCallback((sourceChapterId: string, newConnections: ChapterConnection[]) => {
+    setChapters(prev => prev.map(c => c.id === sourceChapterId ? { ...c, connections: newConnections } : c));
+  }, []);
+
+  const handleOpenPdfPreview = useCallback(() => {
+    if (!selectedIdea) return;
+    
+    const html = generateBookHtml(selectedIdea, chapters, chapterContents, coverImageBase64);
+    setPdfPreviewHtml(html);
+    setIsPdfPreviewOpen(true);
+  }, [selectedIdea, chapters, chapterContents, coverImageBase64]);
+
+
   return (
     <div className="flex flex-col h-screen font-sans bg-gray-900 text-gray-200">
       <header className="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800/50 backdrop-blur-sm">
@@ -374,6 +702,13 @@ const App: React.FC = () => {
               isGeneratingAmazonDetails={isGeneratingAmazonDetails}
               onGenerateTrilogy={handleGenerateTrilogy}
               isGeneratingTrilogy={isGeneratingTrilogy}
+              isEditingChapters={isEditingChapters}
+              onToggleChapterEditing={() => setIsEditingChapters(prev => !prev)}
+              onRenameChapter={handleRenameChapter}
+              onReorderChapters={handleReorderChapters}
+              onDeleteChapter={handleDeleteChapter}
+              onExportToPdf={handleOpenPdfPreview}
+              onOpenConnectionManager={(chapter) => setConnectionModalChapter(chapter)}
             />
           </div>
           <div className="col-span-12 md:col-span-5 lg:col-span-5 xl:col-span-5 flex flex-col overflow-y-auto">
@@ -389,8 +724,15 @@ const App: React.FC = () => {
               isGeneratingContent={isGeneratingContent}
               onHumanize={handleHumanizeText}
               isHumanizing={isHumanizing}
+              onApplyGrammarFixes={handleApplyGrammarFixes}
+              isFixingGrammar={isFixingGrammar}
+              // FIX: Corrected typo from `handleCheckPlagiarism` to `handlePlagiarismCheck`.
               onCheckPlagiarism={handlePlagiarismCheck}
               isCheckingPlagiarism={isCheckingPlagiarism}
+              showUndo={showUndo && lastContent?.chapterId === selectedChapter?.id}
+              onUndo={handleUndo}
+              onSave={handleSaveContent}
+              onRevert={handleRevertContent}
             />
           </div>
         </div>
@@ -398,6 +740,21 @@ const App: React.FC = () => {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalTitle}>
         {modalContent}
       </Modal>
+      <PdfPreviewModal
+        isOpen={isPdfPreviewOpen}
+        onClose={() => setIsPdfPreviewOpen(false)}
+        bookHtml={pdfPreviewHtml}
+        bookTitle={selectedIdea?.title || ''}
+      />
+      {connectionModalChapter && (
+        <ConnectionManagerModal
+          isOpen={!!connectionModalChapter}
+          onClose={() => setConnectionModalChapter(null)}
+          sourceChapter={connectionModalChapter}
+          allChapters={chapters}
+          onSave={handleUpdateConnections}
+        />
+      )}
     </div>
   );
 };

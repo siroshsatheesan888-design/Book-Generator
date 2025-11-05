@@ -74,9 +74,10 @@ export const generateOutline = async (title: string, synopsis: string): Promise<
     });
 
     const chapters = JSON.parse(response.text);
-    return chapters.map((chapter: Omit<Chapter, 'id'>) => ({
+    return chapters.map((chapter: Omit<Chapter, 'id' | 'connections'>) => ({
       ...chapter,
       id: self.crypto.randomUUID(),
+      connections: [],
     }));
   } catch (error) {
     console.error("Error generating chapters:", error);
@@ -328,6 +329,25 @@ export const humanizeText = async (text: string): Promise<string> => {
   } catch (error) {
     console.error("Error humanizing text:", error);
     throw new Error("Failed to humanize text.");
+  }
+};
+
+export const applyGrammarFixes = async (text: string): Promise<string> => {
+  if (!text.trim()) return "There is no content to fix.";
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `You are an expert editor. Proofread the following text for grammar, spelling, and flow. Return the fully corrected text, incorporating all necessary changes directly. Do not provide a list of suggestions; only output the final, polished version of the text.
+      
+      Text to fix:
+      ---
+      ${text}
+      ---`,
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error applying grammar fixes:", error);
+    throw new Error("Failed to apply grammar fixes.");
   }
 };
 

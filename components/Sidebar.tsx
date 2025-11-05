@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import type { BookIdea } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
@@ -12,11 +11,37 @@ interface SidebarProps {
   isLoading: boolean;
   genre: string;
   onGenreChange: (genre: string) => void;
+  favoriteTopics: string[];
+  onTopicsChange: (topics: string[]) => void;
 }
 
 const GENRES = ["Fantasy", "Sci-Fi", "Mystery", "Thriller", "Romance", "Historical Fiction"];
 
-const Sidebar: React.FC<SidebarProps> = ({ ideas, selectedIdeaId, onSelectIdea, onGenerateIdeas, isLoading, genre, onGenreChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({
+  ideas,
+  selectedIdeaId,
+  onSelectIdea,
+  onGenerateIdeas,
+  isLoading,
+  genre,
+  onGenreChange,
+  favoriteTopics,
+  onTopicsChange,
+}) => {
+  const [newTopic, setNewTopic] = useState('');
+
+  const handleAddTopic = () => {
+    const trimmedTopic = newTopic.trim();
+    if (trimmedTopic && !favoriteTopics.includes(trimmedTopic)) {
+      onTopicsChange([...favoriteTopics, trimmedTopic]);
+      setNewTopic('');
+    }
+  };
+
+  const handleRemoveTopic = (topicToRemove: string) => {
+    onTopicsChange(favoriteTopics.filter(topic => topic !== topicToRemove));
+  };
+
   return (
     <div className="flex flex-col h-full bg-gray-800/50 p-4">
       <div className="mb-4">
@@ -29,6 +54,34 @@ const Sidebar: React.FC<SidebarProps> = ({ ideas, selectedIdeaId, onSelectIdea, 
         >
           {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
+      </div>
+
+      <div className="mb-4">
+        <label htmlFor="topics-input" className="block text-sm font-medium text-gray-400 mb-2">Favorite Topics</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            id="topics-input"
+            value={newTopic}
+            onChange={(e) => setNewTopic(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddTopic()}
+            placeholder="e.g., Dragons, AI, Spies"
+            className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 text-sm"
+          />
+          <button onClick={handleAddTopic} className="px-3 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-semibold">Add</button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-2">
+          {favoriteTopics.map(topic => (
+            <span key={topic} className="flex items-center gap-1.5 bg-gray-600 text-gray-200 text-xs font-medium px-2.5 py-1 rounded-full">
+              {topic}
+              <button onClick={() => handleRemoveTopic(topic)} className="text-gray-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </span>
+          ))}
+        </div>
       </div>
 
       <button

@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from 'react';
-import type { BookIdea, Chapter } from './types';
+import type { BookIdea, Chapter, AmazonKDPDetails } from './types';
 import * as geminiService from './services/geminiService';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
 import EditorPanel from './components/EditorPanel';
+import Modal from './components/Modal';
 import { SparklesIcon } from './components/icons/SparklesIcon';
 
 const App: React.FC = () => {
@@ -12,16 +13,25 @@ const App: React.FC = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   
-  // Using a map to store content for each chapter
   const [chapterContents, setChapterContents] = useState<Map<string, string>>(new Map());
   const [analysisResult, setAnalysisResult] = useState<string>('');
-
-  const [isLoadingIdeas, setIsLoadingIdeas] = useState(false);
-  const [isLoadingChapters, setIsLoadingChapters] = useState(false);
-  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [genre, setGenre] = useState('Fantasy');
+  const [favoriteTopics, setFavoriteTopics] = useState<string[]>([]);
+
+  // Loading states
+  const [isLoadingIdeas, setIsLoadingIdeas] = useState(false);
+  const [isLoadingOutline, setIsLoadingOutline] = useState(false);
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+  const [isGeneratingCoverIdeas, setIsGeneratingCoverIdeas] = useState(false);
+  const [isGeneratingAmazonDetails, setIsGeneratingAmazonDetails] = useState(false);
+  
+  // Modal State
+  const [modalContent, setModalContent] = useState<React.ReactNode>(null);
+  const [modalTitle, setModalTitle] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleGenerateIdeas = useCallback(async () => {
     setIsLoadingIdeas(true);
@@ -31,14 +41,14 @@ const App: React.FC = () => {
     setSelectedChapter(null);
     setAnalysisResult('');
     try {
-      const ideas = await geminiService.generateBookIdeas(genre);
+      const ideas = await geminiService.generateBookIdeas(genre, favoriteTopics);
       setBookIdeas(ideas);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setIsLoadingIdeas(false);
     }
-  }, [genre]);
+  }, [genre, favoriteTopics]);
 
   const handleSelectIdea = (idea: BookIdea) => {
     setSelectedIdea(idea);
@@ -47,20 +57,20 @@ const App: React.FC = () => {
     setAnalysisResult('');
   };
 
-  const handleGenerateChapters = useCallback(async () => {
+  const handleGenerateOutline = useCallback(async () => {
     if (!selectedIdea) return;
-    setIsLoadingChapters(true);
+    setIsLoadingOutline(true);
     setError(null);
     setChapters([]);
     setSelectedChapter(null);
     setAnalysisResult('');
     try {
-      const generatedChapters = await geminiService.generateChapters(selectedIdea.title, selectedIdea.synopsis);
+      const generatedChapters = await geminiService.generateOutline(selectedIdea.title, selectedIdea.synopsis);
       setChapters(generatedChapters);
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setIsLoadingChapters(false);
+      setIsLoadingOutline(false);
     }
   }, [selectedIdea]);
 
@@ -68,7 +78,7 @@ const App: React.FC = () => {
     setSelectedChapter(chapter);
     setAnalysisResult('');
   };
-
+  
   const handleContentChange = (content: string) => {
     if (selectedChapter) {
       setChapterContents(prev => new Map(prev).set(selectedChapter.id, content));
@@ -133,6 +143,81 @@ const App: React.FC = () => {
     }
   };
 
+  const handleGenerateNewTitle = useCallback(async () => {
+    if (!selectedIdea) return;
+    setIsGeneratingTitle(true);
+    setError(null);
+    try {
+        const newTitle = await geminiService.generateNewTitle(selectedIdea.synopsis);
+        const updatedIdea = { ...selectedIdea, title: newTitle };
+        setBookIdeas(prevIdeas => prevIdeas.map(idea => idea.id === selectedIdea.id ? updatedIdea : idea));
+        setSelectedIdea(updatedIdea);
+    } catch (e) {
+        setError((e as Error).message);
+    } finally {
+        setIsGeneratingTitle(false);
+    }
+  }, [selectedIdea]);
+
+  const handleGenerateCoverIdeas = useCallback(async () => {
+    if (!selectedIdea) return;
+    setIsGeneratingCoverIdeas(true);
+    setError(null);
+    try {
+        const ideas = await geminiService.generateCoverIdeas(selectedIdea.title, selectedIdea.synopsis);
+        setModalTitle("Book Cover Ideas");
+        setModalContent(
+            <ul className="space-y-4">
+                {ideas.map((idea, index) => (
+                    <li key={index} className="p-3 bg-gray-700/50 rounded-lg">
+                        <p className="text-gray-300">{idea}</p>
+                    </li>
+                ))}
+            </ul>
+        );
+        setIsModalOpen(true);
+    } catch (e) {
+        setError((e as Error).message);
+    } finally {
+        setIsGeneratingCoverIdeas(false);
+    }
+  }, [selectedIdea]);
+
+
+  const handleGenerateAmazonDetails = useCallback(async () => {
+    if (!selectedIdea) return;
+    setIsGeneratingAmazonDetails(true);
+    setError(null);
+    try {
+        const details: AmazonKDPDetails = await geminiService.generateAmazonDetails(selectedIdea.title, selectedIdea.synopsis);
+        setModalTitle("Amazon KDP Details");
+        setModalContent(
+            <div className="space-y-6 text-gray-300 prose prose-invert max-w-none">
+                <div>
+                    <h3 className="text-lg font-semibold text-white mb-2">Book Description</h3>
+                    <div className="p-3 bg-gray-700/50 rounded-lg" dangerouslySetInnerHTML={{ __html: details.description.replace(/\n/g, '<br />') }} />
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold text-white mb-2">Keywords</h3>
+                    <ul className="list-disc list-inside ml-4">
+                        {details.keywords.map((kw, i) => <li key={i}>{kw}</li>)}
+                    </ul>
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold text-white mb-2">Categories</h3>
+                    <ul className="list-disc list-inside ml-4">
+                        {details.categories.map((cat, i) => <li key={i}>{cat}</li>)}
+                    </ul>
+                </div>
+            </div>
+        );
+        setIsModalOpen(true);
+    } catch (e) {
+        setError((e as Error).message);
+    } finally {
+        setIsGeneratingAmazonDetails(false);
+    }
+  }, [selectedIdea]);
 
   return (
     <div className="flex flex-col h-screen font-sans bg-gray-900 text-gray-200">
@@ -161,6 +246,8 @@ const App: React.FC = () => {
               isLoading={isLoadingIdeas}
               genre={genre}
               onGenreChange={setGenre}
+              favoriteTopics={favoriteTopics}
+              onTopicsChange={setFavoriteTopics}
             />
           </div>
           <div className="col-span-12 md:col-span-4 lg:col-span-5 xl:col-span-4 border-r border-gray-700 overflow-y-auto">
@@ -169,8 +256,14 @@ const App: React.FC = () => {
               chapters={chapters}
               selectedChapterId={selectedChapter?.id}
               onSelectChapter={handleSelectChapter}
-              onGenerateChapters={handleGenerateChapters}
-              isLoading={isLoadingChapters}
+              onGenerateOutline={handleGenerateOutline}
+              isLoadingOutline={isLoadingOutline}
+              onGenerateNewTitle={handleGenerateNewTitle}
+              isGeneratingTitle={isGeneratingTitle}
+              onGenerateCoverIdeas={handleGenerateCoverIdeas}
+              isGeneratingCoverIdeas={isGeneratingCoverIdeas}
+              onGenerateAmazonDetails={handleGenerateAmazonDetails}
+              isGeneratingAmazonDetails={isGeneratingAmazonDetails}
             />
           </div>
           <div className="col-span-12 md:col-span-5 lg:col-span-5 xl:col-span-5 flex flex-col overflow-y-auto">
@@ -188,6 +281,9 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalTitle}>
+        {modalContent}
+      </Modal>
     </div>
   );
 };

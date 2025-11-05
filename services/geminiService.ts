@@ -1,15 +1,18 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
-import type { BookIdea, Chapter } from '../types';
+import type { BookIdea, Chapter, AmazonKDPDetails } from '../types';
 
-// FIX: Removed `as string` casting as per coding guidelines.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const generateBookIdeas = async (genre: string): Promise<BookIdea[]> => {
+export const generateBookIdeas = async (genre: string, topics: string[]): Promise<BookIdea[]> => {
   try {
+    let prompt = `Generate 3 unique book ideas in the ${genre} genre. For each idea, provide a compelling title and a one-paragraph synopsis.`;
+    if (topics.length > 0) {
+      prompt += ` The ideas should incorporate some of the user's favorite topics: ${topics.join(', ')}.`;
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-pro",
-      contents: `Generate 3 unique book ideas in the ${genre} genre. For each idea, provide a compelling title and a one-paragraph synopsis.`,
+      contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -43,7 +46,7 @@ export const generateBookIdeas = async (genre: string): Promise<BookIdea[]> => {
   }
 };
 
-export const generateChapters = async (title: string, synopsis: string): Promise<Chapter[]> => {
+export const generateOutline = async (title: string, synopsis: string): Promise<Chapter[]> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-pro",
@@ -95,6 +98,83 @@ export const generateChapterContent = async (bookTitle: string, bookSynopsis: st
     console.error("Error generating chapter content:", error);
     throw new Error("Failed to generate chapter content.");
   }
+};
+
+export const generateNewTitle = async (synopsis: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Based on the following synopsis, generate one new, compelling book title. The title should be catchy and genre-appropriate. Only output the title itself, with no extra text or quotation marks.\n\nSynopsis:\n${synopsis}`,
+        });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Error generating new title:", error);
+        throw new Error("Failed to generate a new title.");
+    }
+};
+
+export const generateCoverIdeas = async (title: string, synopsis: string): Promise<string[]> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro",
+            contents: `For a book titled "${title}" with the synopsis "${synopsis}", generate 4 distinct and visually evocative book cover ideas. For each idea, provide a detailed one-paragraph description focusing on imagery, color palette, and mood.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        ideas: {
+                            type: Type.ARRAY,
+                            description: "A list of 4 book cover ideas.",
+                            items: { type: Type.STRING }
+                        }
+                    },
+                    required: ["ideas"]
+                }
+            }
+        });
+        const result = JSON.parse(response.text);
+        return result.ideas;
+    } catch (error) {
+        console.error("Error generating cover ideas:", error);
+        throw new Error("Failed to generate cover ideas.");
+    }
+};
+
+export const generateAmazonDetails = async (title: string, synopsis: string): Promise<AmazonKDPDetails> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-pro",
+            contents: `For a book titled "${title}" with the synopsis "${synopsis}", generate details for an Amazon KDP listing. Provide a compelling book description (blurb) of about 150-200 words formatted in markdown for Amazon, 7 relevant keywords, and 3 appropriate BISAC categories.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        description: {
+                            type: Type.STRING,
+                            description: "A compelling book description (blurb) formatted in markdown."
+                        },
+                        keywords: {
+                            type: Type.ARRAY,
+                            description: "An array of 7 relevant keywords.",
+                            items: { type: Type.STRING }
+                        },
+                        categories: {
+                            type: Type.ARRAY,
+                            description: "An array of 3 appropriate BISAC categories.",
+                            items: { type: Type.STRING }
+                        }
+                    },
+                    required: ["description", "keywords", "categories"]
+                }
+            }
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        console.error("Error generating Amazon details:", error);
+        throw new Error("Failed to generate Amazon KDP details.");
+    }
 };
 
 export const analyzeContent = async (

@@ -45,3 +45,9 @@ export interface Plan {
   price: string;
   features: string[];
 }
+
+export interface ContentHistory {
+  past: string[];
+  present: string;
+  future: string[];
+}

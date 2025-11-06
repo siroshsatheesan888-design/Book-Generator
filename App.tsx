@@ -1,5 +1,6 @@
+
 import React, { useState, useCallback, useMemo, useRef } from 'react';
-import type { BookIdea, Chapter, ChapterConnection, AmazonKDPDetails, TrilogyBook } from './types';
+import type { BookIdea, Chapter, ChapterConnection, AmazonKDPDetails, TrilogyBook, ContentHistory } from './types';
 import * as geminiService from './services/geminiService';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
@@ -8,6 +9,7 @@ import Modal from './components/Modal';
 import ConnectionManagerModal from './components/ConnectionManagerModal';
 import { SparklesIcon } from './components/icons/SparklesIcon';
 import PdfPreviewModal from './components/PdfPreviewModal';
+import Resizer from './components/Resizer';
 
 // FIX: Moved simpleMarkdownToHtml outside of the component as it is a pure function and does not depend on component state.
 const simpleMarkdownToHtml = (markdown: string): string => {
@@ -31,7 +33,7 @@ const simpleMarkdownToHtml = (markdown: string): string => {
 const generateBookHtml = (
     idea: BookIdea, 
     chapters: Chapter[], 
-    chapterContents: Map<string, string>, 
+    chapterContents: Map<string, ContentHistory>, 
     coverImageBase64: string | null
 ): string => {
     return `
@@ -172,7 +174,7 @@ const generateBookHtml = (
                     <div class="page-break">
                         <h2 id="chapter-${chapter.id}" class="chapter-title">Chapter ${index + 1}: ${chapter.chapterTitle}</h2>
                         <div class="chapter-content">
-                            ${simpleMarkdownToHtml(chapterContents.get(chapter.id) || '<em>No content written for this chapter.</em>')}
+                            ${simpleMarkdownToHtml(chapterContents.get(chapter.id)?.present || '<em>No content written for this chapter.</em>')}
                         </div>
                     </div>
                 `).join('')}
@@ -187,12 +189,16 @@ const App: React.FC = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   
-  const [chapterContents, setChapterContents] = useState<Map<string, string>>(new Map());
+  const [chapterContents, setChapterContents] = useState<Map<string, ContentHistory>>(new Map());
   const [analysisResult, setAnalysisResult] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [genre, setGenre] = useState('Fantasy');
   const [favoriteTopics, setFavoriteTopics] = useState<string[]>([]);
   const [numChaptersToGenerate, setNumChaptersToGenerate] = useState(12);
+
+  // Resizable Panes State
+  const mainContainerRef = useRef<HTMLElement>(null);
+  const [paneWidths, setPaneWidths] = useState([25, 35, 40]);
 
   // Loading states
   const [isLoadingIdeas, setIsLoadingIdeas] = useState(false);
@@ -217,11 +223,6 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [connectionModalChapter, setConnectionModalChapter] = useState<Chapter | null>(null);
   
-  // Undo state
-  const [lastContent, setLastContent] = useState<{ chapterId: string; content: string } | null>(null);
-  const [showUndo, setShowUndo] = useState(false);
-  const undoTimeoutRef = useRef<number | null>(null);
-
   // Chapter Management State
   const [isEditingChapters, setIsEditingChapters] = useState(false);
 
@@ -232,15 +233,68 @@ const App: React.FC = () => {
 
   const { totalWordCount, totalPages } = useMemo(() => {
     let count = 0;
-    for (const content of chapterContents.values()) {
+    for (const history of chapterContents.values()) {
         // filter(Boolean) handles empty strings from multiple spaces
-        count += content.trim().split(/\s+/).filter(Boolean).length;
+        count += history.present.trim().split(/\s+/).filter(Boolean).length;
     }
     return {
         totalWordCount: count,
         totalPages: Math.ceil(count / 250),
     };
   }, [chapterContents]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent, index: number) => {
+    e.preventDefault();
+
+    const startX = e.clientX;
+    const startWidths = paneWidths;
+    const container = mainContainerRef.current;
+
+    if (!container) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const containerWidth = container.offsetWidth;
+      const deltaPercent = (deltaX / containerWidth) * 100;
+      
+      const leftPaneIndex = index;
+      const rightPaneIndex = index + 1;
+      
+      const totalPercent = startWidths[leftPaneIndex] + startWidths[rightPaneIndex];
+      
+      let newLeftPercent = startWidths[leftPaneIndex] + deltaPercent;
+      let newRightPercent = startWidths[rightPaneIndex] - deltaPercent;
+
+      const minPixels = [250, 300, 350];
+      const minLeftPixels = minPixels[leftPaneIndex];
+      const minRightPixels = minPixels[rightPaneIndex];
+
+      const newLeftPixels = (newLeftPercent / 100) * containerWidth;
+      const newRightPixels = (newRightPercent / 100) * containerWidth;
+      
+      if (newLeftPixels < minLeftPixels) {
+        newLeftPercent = (minLeftPixels / containerWidth) * 100;
+        newRightPercent = totalPercent - newLeftPercent;
+      } else if (newRightPixels < minRightPixels) {
+        newRightPercent = (minRightPixels / containerWidth) * 100;
+        newLeftPercent = totalPercent - newRightPercent;
+      }
+      
+      const finalWidths = [...startWidths];
+      finalWidths[leftPaneIndex] = newLeftPercent;
+      finalWidths[rightPaneIndex] = newRightPercent;
+      
+      setPaneWidths(finalWidths);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [paneWidths]);
 
   const handleGenerateIdeas = useCallback(async () => {
     setIsLoadingIdeas(true);
@@ -288,17 +342,15 @@ const App: React.FC = () => {
 
   const handleSelectChapter = useCallback((chapter: Chapter) => {
     if (isEditingChapters) return; // Don't select if in edit mode
-    if (undoTimeoutRef.current) {
-        clearTimeout(undoTimeoutRef.current);
-        setShowUndo(false);
-    }
     // Check local storage for saved content before setting the chapter
     if (!chapterContents.has(chapter.id)) {
-      const savedContent = localStorage.getItem(`mojo-book-writer-chapter-${chapter.id}`);
-      if (savedContent) {
-        // Pre-populate the content state for this chapter
-        setChapterContents(prev => new Map(prev).set(chapter.id, savedContent));
-      }
+      const savedContent = localStorage.getItem(`mojo-book-writer-chapter-${chapter.id}`) || '';
+      // Pre-populate the content state for this chapter
+      setChapterContents(prev => new Map(prev).set(chapter.id, {
+        past: [],
+        present: savedContent,
+        future: []
+      }));
     }
     setSelectedChapter(chapter);
     setAnalysisResult('');
@@ -306,14 +358,30 @@ const App: React.FC = () => {
   
   const handleContentChange = useCallback((content: string) => {
     if (selectedChapter) {
-      setChapterContents(prev => new Map(prev).set(selectedChapter.id, content));
+      setChapterContents(prev => {
+        const newMap = new Map(prev);
+        const history = newMap.get(selectedChapter.id) || { past: [], present: '', future: [] };
+        
+        if (content === history.present) {
+          return prev; // No change, no need to update history
+        }
+
+        const newPast = [...history.past, history.present];
+
+        newMap.set(selectedChapter.id, {
+          past: newPast,
+          present: content,
+          future: [], // New user edit clears the redo stack
+        });
+        return newMap;
+      });
     }
   }, [selectedChapter]);
   
   const handleGenerateContent = useCallback(async () => {
     if (!selectedIdea || !selectedChapter) return;
     
-    const currentContent = chapterContents.get(selectedChapter.id) || '';
+    const currentContent = chapterContents.get(selectedChapter.id)?.present || '';
     if (currentContent.trim().length > 0) {
         if (!window.confirm('This will replace the existing content in the editor. Are you sure you want to proceed?')) {
             return; // User cancelled
@@ -337,7 +405,11 @@ const App: React.FC = () => {
     }
   }, [selectedIdea, selectedChapter, handleContentChange, chapterContents]);
 
-  const currentChapterContent = selectedChapter ? chapterContents.get(selectedChapter.id) || '' : '';
+  const currentChapterHistory = useMemo(() => selectedChapter ? chapterContents.get(selectedChapter.id) : undefined, [selectedChapter, chapterContents]);
+  const currentChapterContent = currentChapterHistory?.present ?? '';
+  const canUndo = (currentChapterHistory?.past.length ?? 0) > 0;
+  const canRedo = (currentChapterHistory?.future.length ?? 0) > 0;
+
 
   // FIX: Wrapped handleAnalysisRequest in useCallback for performance optimization and to fix scoping issues.
   const handleAnalysisRequest = useCallback(async (aspects: string[]) => {
@@ -390,17 +462,8 @@ const App: React.FC = () => {
     setIsHumanizing(true);
     setError(null);
     try {
-      const originalContent = currentChapterContent;
-      const humanizedText = await geminiService.humanizeText(originalContent);
+      const humanizedText = await geminiService.humanizeText(currentChapterContent);
       handleContentChange(humanizedText);
-      
-      setLastContent({ chapterId: selectedChapter.id, content: originalContent });
-      setShowUndo(true);
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-      undoTimeoutRef.current = window.setTimeout(() => {
-        setShowUndo(false);
-      }, 5000);
-
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -420,17 +483,8 @@ const App: React.FC = () => {
     setIsFixingGrammar(true);
     setError(null);
     try {
-      const originalContent = currentChapterContent;
-      const fixedText = await geminiService.applyGrammarFixes(originalContent);
+      const fixedText = await geminiService.applyGrammarFixes(currentChapterContent);
       handleContentChange(fixedText);
-
-      setLastContent({ chapterId: selectedChapter.id, content: originalContent });
-      setShowUndo(true);
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-      undoTimeoutRef.current = window.setTimeout(() => {
-        setShowUndo(false);
-      }, 5000);
-
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -439,16 +493,49 @@ const App: React.FC = () => {
   }, [selectedChapter, currentChapterContent, handleContentChange]);
 
   const handleUndo = useCallback(() => {
-    if (lastContent && selectedChapter && lastContent.chapterId === selectedChapter.id) {
-        handleContentChange(lastContent.content);
-    }
-    setShowUndo(false);
-    setLastContent(null);
-    if (undoTimeoutRef.current) {
-        clearTimeout(undoTimeoutRef.current);
-        undoTimeoutRef.current = null;
-    }
-  }, [lastContent, selectedChapter, handleContentChange]);
+    if (!selectedChapter) return;
+    setChapterContents(prev => {
+      const newMap = new Map(prev);
+      const history = newMap.get(selectedChapter.id);
+
+      if (!history || history.past.length === 0) {
+        return prev;
+      }
+
+      const previousState = history.past[history.past.length - 1];
+      const newPast = history.past.slice(0, history.past.length - 1);
+
+      newMap.set(selectedChapter.id, {
+        past: newPast,
+        present: previousState,
+        future: [history.present, ...history.future],
+      });
+      return newMap;
+    });
+  }, [selectedChapter]);
+
+  const handleRedo = useCallback(() => {
+    if (!selectedChapter) return;
+    setChapterContents(prev => {
+      const newMap = new Map(prev);
+      const history = newMap.get(selectedChapter.id);
+
+      if (!history || history.future.length === 0) {
+        return prev;
+      }
+      
+      const nextState = history.future[0];
+      const newFuture = history.future.slice(1);
+
+      newMap.set(selectedChapter.id, {
+        past: [...history.past, history.present],
+        present: nextState,
+        future: newFuture,
+      });
+      return newMap;
+    });
+  }, [selectedChapter]);
+
 
   const handlePlagiarismCheck = useCallback(async () => {
     if (!selectedChapter || !currentChapterContent) return;
@@ -693,7 +780,7 @@ const App: React.FC = () => {
     const chaptersWithContent = chapters
       .map(chapter => ({
         chapterTitle: chapter.chapterTitle,
-        chapterContent: chapterContents.get(chapter.id) || '',
+        chapterContent: chapterContents.get(chapter.id)?.present || '',
       }))
       .filter(c => c.chapterContent.trim() !== '');
 
@@ -734,7 +821,7 @@ const App: React.FC = () => {
     const chaptersWithContent = chapters
       .map(chapter => ({
         chapterTitle: chapter.chapterTitle,
-        chapterContent: chapterContents.get(chapter.id) || '',
+        chapterContent: chapterContents.get(chapter.id)?.present || '',
       }))
       .filter(c => c.chapterContent.trim() !== '');
 
@@ -772,7 +859,7 @@ const App: React.FC = () => {
 
   const handleSaveContent = useCallback(() => {
     if (selectedChapter) {
-        const contentToSave = chapterContents.get(selectedChapter.id) || '';
+        const contentToSave = chapterContents.get(selectedChapter.id)?.present || '';
         localStorage.setItem(`mojo-book-writer-chapter-${selectedChapter.id}`, contentToSave);
     }
   }, [selectedChapter, chapterContents]);
@@ -781,10 +868,14 @@ const App: React.FC = () => {
       if (selectedChapter) {
           if (window.confirm('Are you sure you want to revert all changes since the last save? This cannot be undone.')) {
               const savedContent = localStorage.getItem(`mojo-book-writer-chapter-${selectedChapter.id}`) || '';
-              handleContentChange(savedContent);
+              setChapterContents(prev => new Map(prev).set(selectedChapter.id, {
+                past: [],
+                present: savedContent,
+                future: [],
+              }));
           }
       }
-  }, [selectedChapter, handleContentChange]);
+  }, [selectedChapter]);
 
   const handleRenameChapter = useCallback((chapterId: string, newTitle: string) => {
     setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, chapterTitle: newTitle } : c));
@@ -861,79 +952,83 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <main className="flex flex-1 overflow-hidden">
-        <div className="grid w-full h-full grid-cols-1 md:grid-cols-12">
-          <div className="col-span-12 md:col-span-3 lg:col-span-2 xl:col-span-3 border-r border-gray-700 overflow-y-auto">
-            <Sidebar
-              ideas={bookIdeas}
-              selectedIdeaId={selectedIdea?.id}
-              onSelectIdea={handleSelectIdea}
-              onGenerateIdeas={handleGenerateIdeas}
-              isLoading={isLoadingIdeas}
-              genre={genre}
-              onGenreChange={setGenre}
-              favoriteTopics={favoriteTopics}
-              onTopicsChange={setFavoriteTopics}
-            />
-          </div>
-          <div className="col-span-12 md:col-span-4 lg:col-span-5 xl:col-span-4 border-r border-gray-700 overflow-y-auto">
-            <MainContent
-              idea={selectedIdea}
-              chapters={chapters}
-              selectedChapterId={selectedChapter?.id}
-              onSelectChapter={handleSelectChapter}
-              onGenerateOutline={handleGenerateOutline}
-              isLoadingOutline={isLoadingOutline}
-              numChaptersToGenerate={numChaptersToGenerate}
-              onNumChaptersChange={setNumChaptersToGenerate}
-              onGenerateNewTitle={handleGenerateNewTitle}
-              isGeneratingTitle={isGeneratingTitle}
-              onGenerateCoverIdeas={handleGenerateCoverIdeas}
-              isGeneratingCoverIdeas={isGeneratingCoverIdeas}
-              onGenerateCoverImage={handleGenerateCoverImage}
-              isGeneratingCoverImage={isGeneratingCoverImage}
-              onGenerateAmazonDetails={handleGenerateAmazonDetails}
-              isGeneratingAmazonDetails={isGeneratingAmazonDetails}
-              onGenerateTrilogy={handleGenerateTrilogy}
-              isGeneratingTrilogy={isGeneratingTrilogy}
-              onAnalyzeFullManuscript={handleAnalyzeFullManuscript}
-              isAnalyzingManuscript={isAnalyzingManuscript}
-              onAnalyzeForFormatting={handleAnalyzeBookForFormatting}
-              isAnalyzingFormatting={isAnalyzingFormatting}
-              isEditingChapters={isEditingChapters}
-              onToggleChapterEditing={() => setIsEditingChapters(prev => !prev)}
-              onRenameChapter={handleRenameChapter}
-              onReorderChapters={handleReorderChapters}
-              onDeleteChapter={handleDeleteChapter}
-              onExportToPdf={handleOpenPdfPreview}
-              onOpenConnectionManager={(chapter) => setConnectionModalChapter(chapter)}
-            />
-          </div>
-          <div className="col-span-12 md:col-span-5 lg:col-span-5 xl:col-span-5 flex flex-col overflow-y-auto">
-            <EditorPanel
-              chapter={selectedChapter}
-              content={currentChapterContent}
-              onContentChange={handleContentChange}
-              onAnalyze={handleAnalysisRequest}
-              onSuggestEdits={handleEditSuggestionRequest}
-              analysisResult={analysisResult}
-              isAnalyzing={isAnalyzing}
-              onGenerateContent={handleGenerateContent}
-              isGeneratingContent={isGeneratingContent}
-              onHumanize={handleHumanizeText}
-              isHumanizing={isHumanizing}
-              onApplyGrammarFixes={handleApplyGrammarFixes}
-              isFixingGrammar={isFixingGrammar}
-              onCheckPlagiarism={handlePlagiarismCheck}
-              isCheckingPlagiarism={isCheckingPlagiarism}
-              onGenerateChapterImage={handleGenerateChapterImage}
-              isGeneratingChapterImage={isGeneratingChapterImage}
-              showUndo={showUndo && lastContent?.chapterId === selectedChapter?.id}
-              onUndo={handleUndo}
-              onSave={handleSaveContent}
-              onRevert={handleRevertContent}
-            />
-          </div>
+      <main className="flex flex-1 overflow-hidden" ref={mainContainerRef}>
+        <div style={{ flex: `0 0 ${paneWidths[0]}%`, minWidth: '250px' }} className="h-full overflow-y-auto">
+          <Sidebar
+            ideas={bookIdeas}
+            selectedIdeaId={selectedIdea?.id}
+            onSelectIdea={handleSelectIdea}
+            onGenerateIdeas={handleGenerateIdeas}
+            isLoading={isLoadingIdeas}
+            genre={genre}
+            onGenreChange={setGenre}
+            favoriteTopics={favoriteTopics}
+            onTopicsChange={setFavoriteTopics}
+          />
+        </div>
+        <Resizer onMouseDown={(e) => handleMouseDown(e, 0)} />
+        <div style={{ flex: `0 0 ${paneWidths[1]}%`, minWidth: '300px' }} className="h-full overflow-y-auto">
+          <MainContent
+            idea={selectedIdea}
+            chapters={chapters}
+            chapterContents={chapterContents}
+            selectedChapterId={selectedChapter?.id}
+            onSelectChapter={handleSelectChapter}
+            onGenerateOutline={handleGenerateOutline}
+            isLoadingOutline={isLoadingOutline}
+            numChaptersToGenerate={numChaptersToGenerate}
+            onNumChaptersChange={setNumChaptersToGenerate}
+            onGenerateNewTitle={handleGenerateNewTitle}
+            isGeneratingTitle={isGeneratingTitle}
+            onGenerateCoverIdeas={handleGenerateCoverIdeas}
+            isGeneratingCoverIdeas={isGeneratingCoverIdeas}
+            onGenerateCoverImage={handleGenerateCoverImage}
+            isGeneratingCoverImage={isGeneratingCoverImage}
+            onGenerateAmazonDetails={handleGenerateAmazonDetails}
+            isGeneratingAmazonDetails={isGeneratingAmazonDetails}
+            onGenerateTrilogy={handleGenerateTrilogy}
+            isGeneratingTrilogy={isGeneratingTrilogy}
+            onAnalyzeFullManuscript={handleAnalyzeFullManuscript}
+            isAnalyzingManuscript={isAnalyzingManuscript}
+            onAnalyzeForFormatting={handleAnalyzeBookForFormatting}
+            isAnalyzingFormatting={isAnalyzingFormatting}
+            isEditingChapters={isEditingChapters}
+            onToggleChapterEditing={() => setIsEditingChapters(prev => !prev)}
+            onRenameChapter={handleRenameChapter}
+            onReorderChapters={handleReorderChapters}
+            onDeleteChapter={handleDeleteChapter}
+            onExportToPdf={handleOpenPdfPreview}
+            onOpenConnectionManager={(chapter) => setConnectionModalChapter(chapter)}
+          />
+        </div>
+        <Resizer onMouseDown={(e) => handleMouseDown(e, 1)} />
+        <div style={{ flex: `1 1 ${paneWidths[2]}%`, minWidth: '350px' }} className="h-full flex flex-col overflow-y-auto">
+          <EditorPanel
+            chapter={selectedChapter}
+            content={currentChapterContent}
+            onContentChange={handleContentChange}
+            onAnalyze={handleAnalysisRequest}
+            onSuggestEdits={handleEditSuggestionRequest}
+            analysisResult={analysisResult}
+            isAnalyzing={isAnalyzing}
+            onGenerateContent={handleGenerateContent}
+            isGeneratingContent={isGeneratingContent}
+            onHumanize={handleHumanizeText}
+            isHumanizing={isHumanizing}
+            onApplyGrammarFixes={handleApplyGrammarFixes}
+            isFixingGrammar={isFixingGrammar}
+            // FIX: Corrected a typo in the function name passed to the onCheckPlagiarism prop, changing handleCheckPlagiarism to the correctly defined handlePlagiarismCheck.
+            onCheckPlagiarism={handlePlagiarismCheck}
+            isCheckingPlagiarism={isCheckingPlagiarism}
+            onGenerateChapterImage={handleGenerateChapterImage}
+            isGeneratingChapterImage={isGeneratingChapterImage}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onSave={handleSaveContent}
+            onRevert={handleRevertContent}
+          />
         </div>
       </main>
       <Modal isOpen={isModalOpen} onClose={handleModalClose} title={modalTitle}>

@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Chapter } from '../types';
 import { SparklesIcon } from './icons/SparklesIcon';
+import Resizer from './Resizer';
+import { UndoIcon } from './icons/UndoIcon';
+import { RedoIcon } from './icons/RedoIcon';
 
 interface EditorPanelProps {
   chapter: Chapter | null;
@@ -20,8 +23,10 @@ interface EditorPanelProps {
   isCheckingPlagiarism: boolean;
   onGenerateChapterImage: () => void;
   isGeneratingChapterImage: boolean;
-  showUndo: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
   onUndo: () => void;
+  onRedo: () => void;
   onSave: () => void;
   onRevert: () => void;
 }
@@ -46,18 +51,70 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   isCheckingPlagiarism,
   onGenerateChapterImage,
   isGeneratingChapterImage,
-  showUndo,
+  canUndo,
+  canRedo,
   onUndo,
+  onRedo,
   onSave,
   onRevert,
 }) => {
-  const [selectedAspects, setSelectedAspects] = React.useState<string[]>(['Tone']);
-  const [saveStatus, setSaveStatus] = React.useState<'saved' | 'unsaved'>('saved');
+  const [selectedAspects, setSelectedAspects] = useState<string[]>(['Tone']);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved'>('saved');
+  
+  // State for resizable editor panes
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const [editorPaneWidths, setEditorPaneWidths] = useState([50, 50]);
+  const [isMobile, setIsMobile] = useState(false);
 
-  React.useEffect(() => {
-    // When the chapter changes, reset the save status.
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
     setSaveStatus('saved');
-  }, [chapter]);
+  }, [chapter, content]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidths = editorPaneWidths;
+    const container = editorContainerRef.current;
+    if (!container) return;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const containerWidth = container.offsetWidth;
+      const deltaPercent = (deltaX / containerWidth) * 100;
+      
+      const totalPercent = startWidths[0] + startWidths[1];
+      
+      let newLeftPercent = startWidths[0] + deltaPercent;
+      let newRightPercent = startWidths[1] - deltaPercent;
+
+      const minPercent = 20;
+      if (newLeftPercent < minPercent) {
+        newLeftPercent = minPercent;
+        newRightPercent = totalPercent - newLeftPercent;
+      } else if (newRightPercent < minPercent) {
+        newRightPercent = minPercent;
+        newLeftPercent = totalPercent - newRightPercent;
+      }
+      
+      setEditorPaneWidths([newLeftPercent, newRightPercent]);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [editorPaneWidths]);
+
 
   const handleAspectChange = (aspect: string) => {
     setSelectedAspects(prev =>
@@ -79,7 +136,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
 
   const handleRevertClick = () => {
     onRevert();
-    // After reverting, the content matches the saved state.
     setSaveStatus('saved');
   };
 
@@ -106,6 +162,25 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
                 <p className="text-gray-400">{chapter.chapterDescription}</p>
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={onUndo}
+                        disabled={!canUndo || isAnyAIOperationRunning}
+                        title="Undo (Ctrl+Z)"
+                        className="p-2 text-gray-400 rounded-md hover:bg-gray-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <UndoIcon className="w-5 h-5"/>
+                    </button>
+                     <button 
+                        onClick={onRedo}
+                        disabled={!canRedo || isAnyAIOperationRunning}
+                        title="Redo (Ctrl+Y)"
+                        className="p-2 text-gray-400 rounded-md hover:bg-gray-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <RedoIcon className="w-5 h-5"/>
+                    </button>
+                </div>
+                <div className="w-px h-8 bg-gray-600"></div>
                 <div className="text-right">
                     <button 
                         onClick={handleSaveClick}
@@ -148,8 +223,11 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
             </div>
         </div>
       </div>
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <div className="w-full md:w-1/2 flex flex-col p-4 relative">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden" ref={editorContainerRef}>
+        <div 
+          style={!isMobile ? { width: `${editorPaneWidths[0]}%` } : {}}
+          className="w-full md:w-auto md:flex-shrink-0 flex flex-col p-4 relative"
+        >
           {(isGeneratingContent || isHumanizing || isFixingGrammar || isGeneratingChapterImage) && (
             <div className="absolute inset-4 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
               <div className="flex items-center gap-3 text-gray-300">
@@ -160,12 +238,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
               </div>
             </div>
           )}
-           {showUndo && (
-            <div className="absolute bottom-6 right-6 bg-gray-800 border border-gray-600 text-white py-2 px-4 rounded-lg shadow-lg flex items-center gap-4 z-20">
-                <p className="text-sm">Content has been updated.</p>
-                <button onClick={onUndo} className="font-semibold text-indigo-400 hover:text-indigo-300 text-sm">Undo</button>
-            </div>
-          )}
           <textarea
             value={content}
             onChange={(e) => handleContentChangeWithStatus(e.target.value)}
@@ -174,7 +246,11 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
             disabled={isAnyAIOperationRunning}
           />
         </div>
-        <div className="w-full md:w-1/2 flex flex-col p-4 border-t md:border-t-0 md:border-l border-gray-700">
+        {!isMobile && <Resizer onMouseDown={handleMouseDown} />}
+        <div 
+          style={!isMobile ? { width: `${editorPaneWidths[1]}%` } : {}}
+          className="w-full md:w-auto md:flex-1 flex flex-col p-4 border-t md:border-t-0 border-gray-700"
+        >
           <div className="mb-4">
             <h4 className="text-lg font-semibold text-gray-300 mb-2">AI Writing Assistant</h4>
              <div className="mb-3">

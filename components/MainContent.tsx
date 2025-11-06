@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { BookIdea, Chapter } from '../types';
+import type { BookIdea, Chapter, ContentHistory } from '../types';
 import { BookOpenIcon } from './icons/BookOpenIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { RefreshIcon } from './icons/RefreshIcon';
@@ -7,10 +7,12 @@ import { PencilIcon } from './icons/PencilIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { DragHandleIcon } from './icons/DragHandleIcon';
 import { SitemapIcon } from './icons/SitemapIcon';
+import CollapsibleSection from './CollapsibleSection';
 
 interface MainContentProps {
   idea: BookIdea | null;
   chapters: Chapter[];
+  chapterContents: Map<string, ContentHistory>;
   selectedChapterId?: string;
   onSelectChapter: (chapter: Chapter) => void;
   onGenerateOutline: () => void;
@@ -67,6 +69,7 @@ const GeneratorButton: React.FC<{onClick: () => void, disabled: boolean, loading
 const MainContent: React.FC<MainContentProps> = ({
   idea,
   chapters,
+  chapterContents,
   selectedChapterId,
   onSelectChapter,
   onGenerateOutline,
@@ -177,9 +180,7 @@ const MainContent: React.FC<MainContentProps> = ({
         <p className="text-gray-400">{idea.synopsis}</p>
       </div>
 
-      <div className="my-4 p-4 rounded-lg bg-gray-800/50">
-        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">AI Generators & Tools</h3>
-        
+      <CollapsibleSection title="AI Generators & Tools" defaultOpen={false}>
         <div className="flex items-center gap-2 mb-3 bg-gray-900/40 p-3 rounded-lg border border-gray-700/50">
             <label htmlFor="num-chapters" className="text-sm font-medium text-gray-300">
                 Number of Chapters:
@@ -211,10 +212,10 @@ const MainContent: React.FC<MainContentProps> = ({
                 Export as Book (PDF)
             </button>
         </div>
-      </div>
+      </CollapsibleSection>
       
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-xl font-semibold text-gray-300">Chapters</h3>
+      <div className="flex justify-between items-center mb-3 mt-4">
+        <h3 className="text-xl font-semibold text-gray-300">Table of Contents</h3>
         {chapters.length > 0 && (
           <button 
             onClick={onToggleChapterEditing} 
@@ -226,75 +227,88 @@ const MainContent: React.FC<MainContentProps> = ({
 
       <div className="flex-1 overflow-y-auto space-y-2 pr-2 -mr-2">
         {chapters.length > 0 ? (
-          chapters.map((chapter, index) => (
-            <div
-              key={chapter.id}
-              draggable={isEditingChapters}
-              onDragStart={isEditingChapters ? (e) => handleDragStart(e, chapter) : undefined}
-              onDragEnter={isEditingChapters ? (e) => handleDragEnter(e, chapter) : undefined}
-              onDragOver={isEditingChapters ? (e) => e.preventDefault() : undefined}
-              onDragEnd={isEditingChapters ? handleDragEnd : undefined}
-              onClick={() => onSelectChapter(chapter)}
-              className={`p-3 rounded-lg border border-transparent transition-all flex items-start justify-between gap-2 ${dragOverId === chapter.id ? 'drag-over' : ''} ${
-                isEditingChapters
-                  ? 'bg-gray-800 cursor-grab'
-                  : selectedChapterId === chapter.id
-                  ? 'bg-indigo-900/50 border-indigo-700'
-                  : 'bg-gray-800 hover:bg-gray-700 cursor-pointer'
-              }`}
-            >
-              {isEditingChapters ? (
-                <>
-                  <DragHandleIcon className="w-5 h-5 text-gray-500 flex-shrink-0 mt-1" />
-                  <div className="flex-grow">
-                  {renamingChapterId === chapter.id ? (
-                      <input 
-                        type="text"
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onBlur={() => handleRenameSubmit(chapter.id)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit(chapter.id)}
-                        autoFocus
-                        className="w-full bg-gray-600 text-white rounded px-2 py-1 text-sm"
-                      />
-                  ) : (
-                    <span className="font-semibold text-white">Chapter {index + 1}: {chapter.chapterTitle}</span>
-                  )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button onClick={(e) => {e.stopPropagation(); handleRenameClick(chapter)}} className="p-1 text-gray-400 hover:text-white"><PencilIcon className="w-4 h-4" /></button>
-                    <button onClick={(e) => {e.stopPropagation(); onDeleteChapter(chapter.id)}} className="p-1 text-gray-400 hover:text-red-400"><TrashIcon className="w-4 h-4" /></button>
-                  </div>
-                </>
-              ) : (
-                <>
-                <div className="flex-grow">
-                  <h4 className="font-semibold text-white">Chapter {index + 1}: {chapter.chapterTitle}</h4>
-                  <p className="text-sm text-gray-400 mt-1">{chapter.chapterDescription}</p>
-                   {chapter.connections && chapter.connections.length > 0 && (
-                    <div className="mt-2 text-xs text-gray-500">
-                      <span className="font-semibold text-gray-400">→ Connects to: </span>
-                      {chapter.connections.map((conn, i) => {
-                        const targetChapter = chapters.find(c => c.id === conn.targetId);
-                        return (
-                          <span key={i}>
-                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); targetChapter && onSelectChapter(targetChapter); }} className="text-indigo-400 hover:underline">
-                              {targetChapter?.chapterTitle || 'Unknown Chapter'}
-                            </button>
-                            {i < chapter.connections.length - 1 && ', '}
-                          </span>
-                        );
-                      })}
+          chapters.map((chapter, index) => {
+            const contentHistory = chapterContents.get(chapter.id);
+            const wordCount = contentHistory ? contentHistory.present.trim().split(/\s+/).filter(Boolean).length : 0;
+            
+            return (
+              <div
+                key={chapter.id}
+                draggable={isEditingChapters}
+                onDragStart={isEditingChapters ? (e) => handleDragStart(e, chapter) : undefined}
+                onDragEnter={isEditingChapters ? (e) => handleDragEnter(e, chapter) : undefined}
+                onDragOver={isEditingChapters ? (e) => e.preventDefault() : undefined}
+                onDragEnd={isEditingChapters ? handleDragEnd : undefined}
+                onClick={() => onSelectChapter(chapter)}
+                className={`p-3 rounded-lg border border-transparent transition-all flex items-start justify-between gap-2 ${dragOverId === chapter.id ? 'drag-over' : ''} ${
+                  isEditingChapters
+                    ? 'bg-gray-800 cursor-grab'
+                    : selectedChapterId === chapter.id
+                    ? 'bg-indigo-900/50 border-indigo-700'
+                    : 'bg-gray-800 hover:bg-gray-700 cursor-pointer'
+                }`}
+              >
+                {isEditingChapters ? (
+                  <>
+                    <DragHandleIcon className="w-5 h-5 text-gray-500 flex-shrink-0 mt-1" />
+                    <div className="flex-grow">
+                    {renamingChapterId === chapter.id ? (
+                        <input 
+                          type="text"
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => handleRenameSubmit(chapter.id)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit(chapter.id)}
+                          autoFocus
+                          className="w-full bg-gray-600 text-white rounded px-2 py-1 text-sm"
+                        />
+                    ) : (
+                      <span className="font-semibold text-white">Chapter {index + 1}: {chapter.chapterTitle}</span>
+                    )}
                     </div>
-                  )}
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); onOpenConnectionManager(chapter); }} className="p-1 text-gray-400 hover:text-white flex-shrink-0" title="Manage Connections">
-                  <SitemapIcon className="w-5 h-5" />
-                </button>
-                </>
-              )}
-            </div>
-          ))
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={(e) => {e.stopPropagation(); handleRenameClick(chapter)}} className="p-1 text-gray-400 hover:text-white"><PencilIcon className="w-4 h-4" /></button>
+                      <button onClick={(e) => {e.stopPropagation(); onDeleteChapter(chapter.id)}} className="p-1 text-gray-400 hover:text-red-400"><TrashIcon className="w-4 h-4" /></button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                  <div className="flex-grow">
+                    <h4 className="font-semibold text-white">Chapter {index + 1}: {chapter.chapterTitle}</h4>
+                    <p className="text-sm text-gray-400 mt-1">{chapter.chapterDescription}</p>
+                    <div className="flex items-baseline justify-between mt-2 text-xs">
+                        <div className="text-gray-500 overflow-hidden pr-2">
+                            {chapter.connections && chapter.connections.length > 0 && (
+                            <div className="truncate">
+                                <span className="font-semibold text-gray-400 mr-1">→</span>
+                                {chapter.connections.map((conn, i) => {
+                                const targetChapter = chapters.find(c => c.id === conn.targetId);
+                                const targetIndex = targetChapter ? chapters.indexOf(targetChapter) : -1;
+                                return (
+                                    <span key={i}>
+                                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); targetChapter && onSelectChapter(targetChapter); }} className="text-indigo-400 hover:underline">
+                                        {targetChapter ? `Ch. ${targetIndex + 1}` : '...'}
+                                    </button>
+                                    {i < chapter.connections.length - 1 && ', '}
+                                    </span>
+                                );
+                                })}
+                            </div>
+                            )}
+                        </div>
+                        <div className="text-gray-400 font-medium whitespace-nowrap flex-shrink-0">
+                            {wordCount > 0 ? `${wordCount.toLocaleString()} words` : 'Not started'}
+                        </div>
+                    </div>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); onOpenConnectionManager(chapter); }} className="p-1 text-gray-400 hover:text-white flex-shrink-0" title="Manage Connections">
+                    <SitemapIcon className="w-5 h-5" />
+                  </button>
+                  </>
+                )}
+              </div>
+            )
+          })
         ) : !isLoadingOutline && (
           <div className="text-center text-gray-500 py-8">
             <p>Click "Generate Outline" to create a plan for your book.</p>

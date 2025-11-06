@@ -3,6 +3,24 @@ import type { BookIdea, Chapter, AmazonKDPDetails, TrilogyBook } from '../types'
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// FIX: Added a centralized error handler to provide user-friendly messages for common API issues like rate limiting.
+const handleGeminiError = (error: unknown, defaultMessage: string): Error => {
+  console.error(defaultMessage, error);
+  if (error instanceof Error) {
+    const message = error.message;
+    // Check for specific error strings related to rate limiting or resource exhaustion.
+    if (message.includes('429') || message.includes('RESOURCE_EXHAUSTED') || message.toLowerCase().includes('rate limit')) {
+      return new Error("Rate limit exceeded. You've made too many requests in a short time. Please wait a moment before trying again. For higher limits, you can add your own Gemini API key in the settings.");
+    }
+    // Check for API key issues
+    if (message.toLowerCase().includes('api key not valid')) {
+       return new Error("Your Gemini API Key is not valid. Please check it in the settings or get a new one from Google AI Studio.");
+    }
+  }
+  // Generic fallback error
+  return new Error(`${defaultMessage}. Please check your connection and API key.`);
+}
+
 export const generateBookIdeas = async (genre: string, topics: string[]): Promise<BookIdea[]> => {
   try {
     let prompt = `Generate 3 unique book ideas in the ${genre} genre. For each idea, provide a compelling title and a one-paragraph synopsis.`;
@@ -41,8 +59,7 @@ export const generateBookIdeas = async (genre: string, topics: string[]): Promis
       id: self.crypto.randomUUID(),
     }));
   } catch (error) {
-    console.error("Error generating book ideas:", error);
-    throw new Error("Failed to generate book ideas. Please check your API key and try again.");
+    throw handleGeminiError(error, "Failed to generate book ideas");
   }
 };
 
@@ -80,8 +97,7 @@ export const generateOutline = async (title: string, synopsis: string, numberOfC
       connections: [],
     }));
   } catch (error) {
-    console.error("Error generating chapters:", error);
-    throw new Error("Failed to generate chapters.");
+    throw handleGeminiError(error, "Failed to generate chapters");
   }
 };
 
@@ -96,8 +112,7 @@ export const generateChapterContent = async (bookTitle: string, bookSynopsis: st
     });
     return response.text;
   } catch (error) {
-    console.error("Error generating chapter content:", error);
-    throw new Error("Failed to generate chapter content.");
+    throw handleGeminiError(error, "Failed to generate chapter content");
   }
 };
 
@@ -109,8 +124,7 @@ export const generateNewTitle = async (synopsis: string): Promise<string> => {
         });
         return response.text.trim();
     } catch (error) {
-        console.error("Error generating new title:", error);
-        throw new Error("Failed to generate a new title.");
+        throw handleGeminiError(error, "Failed to generate a new title");
     }
 };
 
@@ -137,8 +151,7 @@ export const generateCoverIdeas = async (title: string, synopsis: string): Promi
         const result = JSON.parse(response.text);
         return result.ideas;
     } catch (error) {
-        console.error("Error generating cover ideas:", error);
-        throw new Error("Failed to generate cover ideas.");
+        throw handleGeminiError(error, "Failed to generate cover ideas");
     }
 };
 
@@ -165,8 +178,7 @@ export const generateTaglines = async (title: string, synopsis: string): Promise
         const result = JSON.parse(response.text);
         return result.taglines;
     } catch (error) {
-        console.error("Error generating taglines:", error);
-        throw new Error("Failed to generate taglines.");
+        throw handleGeminiError(error, "Failed to generate taglines");
     }
 };
 
@@ -187,8 +199,7 @@ export const generateCoverImage = async (title: string, synopsis: string, genre:
 
         return response.generatedImages[0].image.imageBytes;
     } catch (error) {
-        console.error("Error generating cover image:", error);
-        throw new Error("Failed to generate cover image.");
+        throw handleGeminiError(error, "Failed to generate cover image");
     }
 };
 
@@ -223,8 +234,7 @@ export const generateChapterImage = async (
 
         return response.generatedImages[0].image.imageBytes;
     } catch (error) {
-        console.error("Error generating chapter image:", error);
-        throw new Error("Failed to generate chapter image.");
+        throw handleGeminiError(error, "Failed to generate chapter image");
     }
 };
 
@@ -260,8 +270,7 @@ export const generateAmazonDetails = async (title: string, synopsis: string): Pr
         });
         return JSON.parse(response.text);
     } catch (error) {
-        console.error("Error generating Amazon details:", error);
-        throw new Error("Failed to generate Amazon KDP details.");
+        throw handleGeminiError(error, "Failed to generate Amazon KDP details");
     }
 };
 
@@ -309,8 +318,7 @@ export const generateTrilogySequence = async (title: string, synopsis: string): 
     const result = JSON.parse(response.text);
     return result.trilogy;
   } catch (error) {
-    console.error("Error generating trilogy sequence:", error);
-    throw new Error("Failed to generate trilogy sequence.");
+    throw handleGeminiError(error, "Failed to generate trilogy sequence");
   }
 };
 
@@ -353,8 +361,7 @@ export const analyzeContent = async (
     });
     return response.text;
   } catch (error) {
-    console.error("Error analyzing content:", error);
-    throw new Error("Failed to analyze content.");
+    throw handleGeminiError(error, "Failed to analyze content");
   }
 };
 
@@ -373,8 +380,7 @@ export const suggestEdits = async (text: string): Promise<string> => {
     });
     return response.text;
   } catch (error) {
-    console.error("Error suggesting edits:", error);
-    throw new Error("Failed to suggest edits.");
+    throw handleGeminiError(error, "Failed to suggest edits");
   }
 };
 
@@ -392,8 +398,7 @@ export const humanizeText = async (text: string): Promise<string> => {
     });
     return response.text;
   } catch (error) {
-    console.error("Error humanizing text:", error);
-    throw new Error("Failed to humanize text.");
+    throw handleGeminiError(error, "Failed to humanize text");
   }
 };
 
@@ -411,8 +416,7 @@ export const applyGrammarFixes = async (text: string): Promise<string> => {
     });
     return response.text;
   } catch (error) {
-    console.error("Error applying grammar fixes:", error);
-    throw new Error("Failed to apply grammar fixes.");
+    throw handleGeminiError(error, "Failed to apply grammar fixes");
   }
 };
 
@@ -433,8 +437,7 @@ export const checkPlagiarism = async (text: string): Promise<string> => {
     });
     return response.text;
   } catch (error) {
-    console.error("Error checking plagiarism:", error);
-    throw new Error("Failed to check for plagiarism.");
+    throw handleGeminiError(error, "Failed to check for plagiarism");
   }
 };
 
@@ -471,8 +474,7 @@ export const analyzeFullManuscript = async (
     });
     return response.text;
   } catch (error) {
-    console.error("Error analyzing full manuscript:", error);
-    throw new Error("Failed to analyze the full manuscript.");
+    throw handleGeminiError(error, "Failed to analyze the full manuscript");
   }
 };
 
@@ -516,7 +518,6 @@ export const analyzeBookForFormatting = async (
     });
     return response.text;
   } catch (error) {
-    console.error("Error analyzing book for formatting:", error);
-    throw new Error("Failed to analyze the book for formatting.");
+    throw handleGeminiError(error, "Failed to analyze the book for formatting");
   }
 };

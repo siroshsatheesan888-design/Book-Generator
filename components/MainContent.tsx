@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import type { BookIdea, Chapter, ContentHistory } from '../types';
 import { BookOpenIcon } from './icons/BookOpenIcon';
@@ -17,6 +18,8 @@ interface MainContentProps {
   onSelectChapter: (chapter: Chapter) => void;
   onGenerateOutline: () => void;
   isLoadingOutline: boolean;
+  onGenerateAllChapters: () => void;
+  isGeneratingAllChapters: boolean;
   numChaptersToGenerate: number;
   onNumChaptersChange: (num: number) => void;
   onGenerateNewTitle: () => void;
@@ -74,6 +77,8 @@ const MainContent: React.FC<MainContentProps> = ({
   onSelectChapter,
   onGenerateOutline,
   isLoadingOutline,
+  onGenerateAllChapters,
+  isGeneratingAllChapters,
   numChaptersToGenerate,
   onNumChaptersChange,
   onGenerateNewTitle,
@@ -103,6 +108,8 @@ const MainContent: React.FC<MainContentProps> = ({
   const dragItem = React.useRef<Chapter | null>(null);
   const dragOverItem = React.useRef<Chapter | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const isAnyGeneratorRunning = isLoadingOutline || isGeneratingAllChapters || isGeneratingTrilogy || isGeneratingCoverIdeas || isGeneratingCoverImage || isGeneratingAmazonDetails || isAnalyzingManuscript || isAnalyzingFormatting;
 
   if (!idea) {
     return (
@@ -200,14 +207,15 @@ const MainContent: React.FC<MainContentProps> = ({
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-            <GeneratorButton onClick={onGenerateOutline} disabled={isLoadingOutline} loadingText="Outlining...">Generate Outline</GeneratorButton>
-            <GeneratorButton onClick={onGenerateTrilogy} disabled={isGeneratingTrilogy} loadingText="Sequencing...">Trilogy Sequence</GeneratorButton>
-            <GeneratorButton onClick={onGenerateCoverIdeas} disabled={isGeneratingCoverIdeas} loadingText="Dreaming...">Cover Ideas</GeneratorButton>
-            <GeneratorButton onClick={onGenerateCoverImage} disabled={isGeneratingCoverImage} loadingText="Designing...">Generate Cover w/ Title</GeneratorButton>
-            <GeneratorButton onClick={onGenerateAmazonDetails} disabled={isGeneratingAmazonDetails} loadingText="Publishing...">KDP Details</GeneratorButton>
-            <GeneratorButton onClick={onAnalyzeFullManuscript} disabled={isAnalyzingManuscript || chapters.length === 0} loadingText="Analyzing...">Analyze Manuscript</GeneratorButton>
-            <GeneratorButton onClick={onAnalyzeForFormatting} disabled={isAnalyzingFormatting || chapters.length === 0} loadingText="Formatting...">Analyze for 6x9 Print</GeneratorButton>
-            <button onClick={onExportToPdf} disabled={!chapters.length} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:bg-green-500/50 disabled:cursor-not-allowed transition-colors text-sm col-span-2 lg:col-span-3">
+            <GeneratorButton onClick={onGenerateOutline} disabled={isAnyGeneratorRunning} loadingText="Outlining...">Generate Outline</GeneratorButton>
+            <GeneratorButton onClick={onGenerateAllChapters} disabled={isAnyGeneratorRunning || chapters.length === 0} loadingText="Generating...">Generate All Chapters</GeneratorButton>
+            <GeneratorButton onClick={onGenerateTrilogy} disabled={isAnyGeneratorRunning} loadingText="Sequencing...">Trilogy Sequence</GeneratorButton>
+            <GeneratorButton onClick={onGenerateCoverIdeas} disabled={isAnyGeneratorRunning} loadingText="Dreaming...">Cover Ideas</GeneratorButton>
+            <GeneratorButton onClick={onGenerateCoverImage} disabled={isAnyGeneratorRunning} loadingText="Designing...">Generate Cover w/ Title</GeneratorButton>
+            <GeneratorButton onClick={onGenerateAmazonDetails} disabled={isAnyGeneratorRunning} loadingText="Publishing...">KDP Details</GeneratorButton>
+            <GeneratorButton onClick={onAnalyzeFullManuscript} disabled={isAnyGeneratorRunning || chapters.length === 0} loadingText="Analyzing...">Analyze Manuscript</GeneratorButton>
+            <GeneratorButton onClick={onAnalyzeForFormatting} disabled={isAnyGeneratorRunning || chapters.length === 0} loadingText="Formatting...">Analyze for 6x9 Print</GeneratorButton>
+            <button onClick={onExportToPdf} disabled={!chapters.length || isAnyGeneratorRunning} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:bg-green-500/50 disabled:cursor-not-allowed transition-colors text-sm col-span-2 lg:col-span-3">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                 Export as Book (PDF)
             </button>

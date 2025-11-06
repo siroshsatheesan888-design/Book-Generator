@@ -5,9 +5,10 @@ interface PdfPreviewModalProps {
   onClose: () => void;
   bookHtml: string;
   bookTitle: string;
+  onStartEmailProcess: () => void;
 }
 
-const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ isOpen, onClose, bookHtml, bookTitle }) => {
+const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ isOpen, onClose, bookHtml, bookTitle, onStartEmailProcess }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handlePrint = () => {
@@ -16,6 +17,11 @@ const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ isOpen, onClose, book
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     }
+  };
+
+  const handleEmailAndPrint = () => {
+    handlePrint(); // First, trigger the save/print dialog
+    onStartEmailProcess(); // Then, open the email modal
   };
 
   if (!isOpen) return null;
@@ -37,8 +43,11 @@ const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ isOpen, onClose, book
             <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-white bg-gray-600 rounded-lg hover:bg-gray-700">
                 Close Preview
             </button>
-            <button onClick={handlePrint} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
-                Proceed to Export (PDF)
+            <button onClick={handlePrint} className="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700">
+                Save as PDF
+            </button>
+            <button onClick={handleEmailAndPrint} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
+                Email PDF...
             </button>
           </div>
         </header>

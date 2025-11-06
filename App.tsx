@@ -10,6 +10,7 @@ import ConnectionManagerModal from './components/ConnectionManagerModal';
 import { SparklesIcon } from './components/icons/SparklesIcon';
 import PdfPreviewModal from './components/PdfPreviewModal';
 import Resizer from './components/Resizer';
+import EmailModal from './components/EmailModal';
 
 // FIX: Moved simpleMarkdownToHtml outside of the component as it is a pure function and does not depend on component state.
 const simpleMarkdownToHtml = (markdown: string): string => {
@@ -204,6 +205,7 @@ const App: React.FC = () => {
   const [isLoadingIdeas, setIsLoadingIdeas] = useState(false);
   const [isLoadingOutline, setIsLoadingOutline] = useState(false);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [isGeneratingAllChapters, setIsGeneratingAllChapters] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isHumanizing, setIsHumanizing] = useState(false);
   const [isFixingGrammar, setIsFixingGrammar] = useState(false);
@@ -230,6 +232,7 @@ const App: React.FC = () => {
   const [coverImageBase64, setCoverImageBase64] = useState<string | null>(null);
   const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
   const [pdfPreviewHtml, setPdfPreviewHtml] = useState('');
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   const { totalWordCount, totalPages } = useMemo(() => {
     let count = 0;
@@ -404,6 +407,80 @@ const App: React.FC = () => {
       setIsGeneratingContent(false);
     }
   }, [selectedIdea, selectedChapter, handleContentChange, chapterContents]);
+
+  const handleGenerateAllChapters = useCallback(async () => {
+    if (!selectedIdea || chapters.length === 0) return;
+
+    const chaptersWithExistingContent = chapters.filter(c => (chapterContents.get(c.id)?.present || '').trim() !== '').length;
+    
+    let confirmMessage = 'This will generate content for all chapters. Are you sure?';
+    if (chaptersWithExistingContent > 0) {
+        confirmMessage = `This will generate content for all ${chapters.length} chapters. ${chaptersWithExistingContent} chapter(s) already have content which will be REPLACED. This action cannot be undone. Are you sure?`;
+    }
+
+    if (!window.confirm(confirmMessage)) {
+        return;
+    }
+
+    setIsGeneratingAllChapters(true);
+    setError(null);
+    setModalTitle("Generating Full Manuscript...");
+    setIsModalOpen(true);
+    setModalContent(
+      <div className="text-center p-4">
+        <SparklesIcon className="w-12 h-12 mx-auto animate-pulse text-indigo-400" />
+        <p className="mt-4 text-gray-300">Preparing to generate...</p>
+      </div>
+    );
+
+    try {
+        for (let i = 0; i < chapters.length; i++) {
+            const chapter = chapters[i];
+            const progressMessage = `Generating Chapter ${i + 1} of ${chapters.length}: "${chapter.chapterTitle}"...`;
+            
+            setModalContent(
+                <div className="text-center p-4">
+                  <SparklesIcon className="w-12 h-12 mx-auto animate-pulse text-indigo-400" />
+                  <p className="mt-4 text-gray-300">{progressMessage}</p>
+                </div>
+            );
+
+            const content = await geminiService.generateChapterContent(
+                selectedIdea.title,
+                selectedIdea.synopsis,
+                chapter.chapterTitle,
+                chapter.chapterDescription
+            );
+            
+            setChapterContents(prev => {
+                const newMap = new Map(prev);
+                const history = { past: [], present: content, future: [] };
+                newMap.set(chapter.id, history);
+                return newMap;
+            });
+        }
+
+        setModalTitle("Generation Complete");
+        setModalContent(
+            <div className="text-center p-4">
+              <p className="mt-4 text-green-400">All chapters have been successfully generated!</p>
+              <p className="text-sm text-gray-400 mt-2">You can now close this window.</p>
+            </div>
+        );
+
+    } catch (e) {
+        setError((e as Error).message);
+        setModalTitle("Error");
+        setModalContent(
+            <div className="text-center text-red-400 p-4">
+                <p>An error occurred during generation:</p>
+                <p className="mt-2 text-sm text-gray-400">{(e as Error).message}</p>
+            </div>
+        );
+    } finally {
+        setIsGeneratingAllChapters(false);
+    }
+  }, [selectedIdea, chapters, chapterContents]);
 
   const currentChapterHistory = useMemo(() => selectedChapter ? chapterContents.get(selectedChapter.id) : undefined, [selectedChapter, chapterContents]);
   const currentChapterContent = currentChapterHistory?.present ?? '';
@@ -976,6 +1053,8 @@ const App: React.FC = () => {
             onSelectChapter={handleSelectChapter}
             onGenerateOutline={handleGenerateOutline}
             isLoadingOutline={isLoadingOutline}
+            onGenerateAllChapters={handleGenerateAllChapters}
+            isGeneratingAllChapters={isGeneratingAllChapters}
             numChaptersToGenerate={numChaptersToGenerate}
             onNumChaptersChange={setNumChaptersToGenerate}
             onGenerateNewTitle={handleGenerateNewTitle}
@@ -1039,6 +1118,7 @@ const App: React.FC = () => {
         onClose={() => setIsPdfPreviewOpen(false)}
         bookHtml={pdfPreviewHtml}
         bookTitle={selectedIdea?.title || ''}
+        onStartEmailProcess={() => setIsEmailModalOpen(true)}
       />
       {connectionModalChapter && (
         <ConnectionManagerModal
@@ -1047,6 +1127,14 @@ const App: React.FC = () => {
           sourceChapter={connectionModalChapter}
           allChapters={chapters}
           onSave={handleUpdateConnections}
+        />
+      )}
+      {selectedIdea && (
+        <EmailModal
+            isOpen={isEmailModalOpen}
+            onClose={() => setIsEmailModalOpen(false)}
+            bookTitle={selectedIdea.title}
+            bookSynopsis={selectedIdea.synopsis}
         />
       )}
     </div>

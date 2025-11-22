@@ -19,11 +19,6 @@ const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ isOpen, onClose, book
     }
   };
 
-  const handleEmailAndPrint = () => {
-    handlePrint(); // First, trigger the save/print dialog
-    onStartEmailProcess(); // Then, open the email modal
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -44,10 +39,10 @@ const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({ isOpen, onClose, book
                 Close Preview
             </button>
             <button onClick={handlePrint} className="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700">
-                Save as PDF
+                Save to Device (PDF)
             </button>
-            <button onClick={handleEmailAndPrint} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
-                Email PDF...
+            <button onClick={onStartEmailProcess} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
+                Compose Email...
             </button>
           </div>
         </header>

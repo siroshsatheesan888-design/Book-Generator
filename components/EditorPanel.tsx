@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Chapter } from '../types';
 import { SparklesIcon } from './icons/SparklesIcon';
@@ -27,8 +28,6 @@ interface EditorPanelProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
-  onSave: () => void;
-  onRevert: () => void;
 }
 
 const ANALYSIS_ASPECTS = ['Tone', 'Pacing', 'Clarity', 'Plot Consistency'];
@@ -55,11 +54,8 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   canRedo,
   onUndo,
   onRedo,
-  onSave,
-  onRevert,
 }) => {
   const [selectedAspects, setSelectedAspects] = useState<string[]>(['Tone']);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved'>('saved');
   
   // State for resizable editor panes
   const editorContainerRef = useRef<HTMLDivElement>(null);
@@ -72,10 +68,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-
-  useEffect(() => {
-    setSaveStatus('saved');
-  }, [chapter, content]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -124,21 +116,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     );
   };
 
-  const handleContentChangeWithStatus = (newContent: string) => {
-    onContentChange(newContent);
-    setSaveStatus('unsaved');
-  };
-
-  const handleSaveClick = () => {
-    onSave();
-    setSaveStatus('saved');
-  };
-
-  const handleRevertClick = () => {
-    onRevert();
-    setSaveStatus('saved');
-  };
-
   if (!chapter) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center text-gray-500">
@@ -181,25 +158,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
                     </button>
                 </div>
                 <div className="w-px h-8 bg-gray-600"></div>
-                <div className="text-right">
-                    <button 
-                        onClick={handleSaveClick}
-                        disabled={saveStatus !== 'unsaved' || isAnyAIOperationRunning}
-                        className="px-4 py-1 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-green-500/50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        Save
-                    </button>
-                    <p className={`text-xs mt-1 h-4 ${saveStatus === 'unsaved' ? 'text-yellow-400' : 'text-gray-500'}`}>
-                        {saveStatus === 'unsaved' ? 'Unsaved changes' : 'All changes saved'}
-                    </p>
-                </div>
-                 <button 
-                    onClick={handleRevertClick}
-                    disabled={saveStatus !== 'unsaved' || isAnyAIOperationRunning}
-                    className="px-4 py-1 text-sm font-semibold text-white bg-gray-600 rounded-md hover:bg-gray-700 disabled:bg-gray-500/50 disabled:cursor-not-allowed transition-colors"
-                >
-                    Revert
-                </button>
                 <button 
                     onClick={onGenerateContent} 
                     disabled={isGeneratingContent}
@@ -240,7 +198,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
           )}
           <textarea
             value={content}
-            onChange={(e) => handleContentChangeWithStatus(e.target.value)}
+            onChange={(e) => onContentChange(e.target.value)}
             placeholder="Start writing your chapter here, or use the AI to generate it."
             className="flex-1 w-full p-4 bg-gray-900 border border-gray-700 rounded-lg resize-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-300 disabled:opacity-70"
             disabled={isAnyAIOperationRunning}

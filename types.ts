@@ -51,3 +51,22 @@ export interface ContentHistory {
   present: string;
   future: string[];
 }
+
+export interface RevisedChapter {
+  chapterTitle: string;
+  revisedContent: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  lastModified: number;
+  idea: BookIdea;
+  chapters: Chapter[];
+  // Storing Map as an array of key-value pairs for JSON serialization
+  chapterContents: [string, ContentHistory][];
+  coverImageBase64: string | null;
+  genre: string;
+  favoriteTopics: string[];
+  amazonKdpDetails: AmazonKDPDetails | null;
+}

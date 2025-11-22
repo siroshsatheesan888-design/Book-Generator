@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { BookIdea, Chapter, AmazonKDPDetails, TrilogyBook } from '../types';
+import type { BookIdea, Chapter, AmazonKDPDetails, TrilogyBook, RevisedChapter } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -113,6 +113,68 @@ export const generateChapterContent = async (bookTitle: string, bookSynopsis: st
     return response.text;
   } catch (error) {
     throw handleGeminiError(error, "Failed to generate chapter content");
+  }
+};
+
+export const generateAllChaptersContent = async (
+  bookTitle: string,
+  bookSynopsis: string,
+  chapters: Array<{ id: string; chapterTitle: string; chapterDescription: string }>
+): Promise<Array<{ chapterId: string; content: string }>> => {
+  try {
+    const chaptersToGenerate = chapters.map(c => ({
+      id: c.id,
+      title: c.chapterTitle,
+      description: c.chapterDescription
+    }));
+
+    const prompt = `You are a creative writer. Based on the book titled "${bookTitle}" with the synopsis "${bookSynopsis}", write the content for all the following chapters.
+    
+    For each chapter, write a compelling and engaging chapter of about 500-700 words. Use rich descriptions and advance the plot according to the chapter's title and description.
+    
+    Output the content for all chapters in markdown format.
+    
+    Return your response as a single JSON object. The JSON should have a key "generatedChapters" which is an array of objects. Each object in the array must have two keys: "chapterId" (the original ID of the chapter) and "content" (the generated markdown text for that chapter).
+    
+    Chapters to generate:
+    ${JSON.stringify(chaptersToGenerate, null, 2)}
+    `;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-pro",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            generatedChapters: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  chapterId: {
+                    type: Type.STRING,
+                    description: "The original ID of the chapter.",
+                  },
+                  content: {
+                    type: Type.STRING,
+                    description: "The generated markdown content for the chapter.",
+                  },
+                },
+                required: ["chapterId", "content"],
+              },
+            },
+          },
+          required: ["generatedChapters"],
+        },
+      },
+    });
+
+    const result = JSON.parse(response.text);
+    return result.generatedChapters;
+  } catch (error) {
+    throw handleGeminiError(error, "Failed to generate content for all chapters");
   }
 };
 
@@ -478,46 +540,83 @@ export const analyzeFullManuscript = async (
   }
 };
 
-export const analyzeBookForFormatting = async (
+export const applyManuscriptFixes = async (
   title: string,
   synopsis: string,
-  genre: string,
-  chapters: Array<{ chapterTitle: string; chapterContent: string }>
-): Promise<string> => {
+  chapters: Array<{ chapterTitle: string; chapterContent: string }>,
+  analysisReport: string
+): Promise<RevisedChapter[]> => {
   if (chapters.length === 0) {
-    return "There is no content to analyze.";
+    throw new Error("There are no chapters to fix.");
+  }
+  if (!analysisReport.trim()) {
+    throw new Error("The analysis report is empty.");
   }
 
   const manuscriptContent = chapters.map(c => 
     `--- CHAPTER: ${c.chapterTitle} ---\n${c.chapterContent}`
   ).join('\n\n');
-  
-  const wordCount = manuscriptContent.trim().split(/\s+/).filter(Boolean).length;
 
-  const prompt = `You are a book production expert. Your task is to analyze a manuscript to see how it would fit into a standard 6" x 9" trade paperback format.
+  const prompt = `You are an expert developmental editor. You will be given a book's title, its synopsis, a full manuscript, and a detailed analysis report outlining issues like plot holes, character inconsistencies, and pacing problems.
   
-  The book is a ${genre} novel titled "${title}" with the following synopsis: "${synopsis}".
+  Your task is to REWRITE the manuscript to fix all the issues mentioned in the analysis report. Apply the suggestions thoughtfully to improve the story's overall quality, coherence, and engagement.
   
-  The manuscript has a total word count of approximately ${wordCount} words.
+  IMPORTANT INSTRUCTIONS:
+  1.  Rewrite the content of the chapters directly. Do not just comment on the changes.
+  2.  Preserve the original chapter structure.
+  3.  DO NOT change the original chapter titles. The titles in your output MUST EXACTLY match the titles from the input manuscript.
+  4.  Return your response as a single JSON object.
 
-  Please provide a detailed analysis report in markdown format that includes:
-  1.  **Estimated Page Count:** Based on the word count, calculate the estimated number of pages for a 6" x 9" book, assuming a standard font size and margin (typically 250-300 words per page).
-  2.  **Genre Length Analysis:** Comment on how this length fits within typical expectations for the "${genre}" genre. Is it short, average, or long?
-  3.  **Pacing & Structure Suggestions:** Based on the manuscript content, provide actionable suggestions for adjusting the length. Identify specific chapters or sections that could be expanded with more detail or condensed for better pacing.
-  4.  **Final Verdict:** A concluding summary of whether the book is well-suited for the 6x9 format as-is, or if adjustments are recommended.
+  BOOK TITLE: "${title}"
+  BOOK SYNOPSIS: "${synopsis}"
   
-  MANUSCRIPT:
+  ANALYSIS REPORT:
+  ---
+  ${analysisReport}
+  ---
+  
+  ORIGINAL MANUSCRIPT:
   ---
   ${manuscriptContent}
-  ---`;
+  ---
+  `;
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-pro",
       contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            revisedChapters: {
+              type: Type.ARRAY,
+              description: "An array of all the rewritten chapters.",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  chapterTitle: {
+                    type: Type.STRING,
+                    description: "The original title of the chapter. This must not be changed.",
+                  },
+                  revisedContent: {
+                    type: Type.STRING,
+                    description: "The full, rewritten content of the chapter.",
+                  },
+                },
+                required: ["chapterTitle", "revisedContent"],
+              },
+            },
+          },
+          required: ["revisedChapters"],
+        },
+      },
     });
-    return response.text;
+
+    const result = JSON.parse(response.text);
+    return result.revisedChapters;
   } catch (error) {
-    throw handleGeminiError(error, "Failed to analyze the book for formatting");
+    throw handleGeminiError(error, "Failed to apply manuscript fixes");
   }
 };
